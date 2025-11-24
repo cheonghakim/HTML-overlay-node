@@ -188,8 +188,12 @@ export class CanvasRenderer {
       running = false,
       time = performance.now(),
       dt = 0,
+      groups = null,
     } = {}
   ) {
+    // Update transforms first
+    graph.updateWorldTransforms();
+
     this.drawGrid();
     const { ctx, theme } = this;
     this._applyTransform();
@@ -206,13 +210,22 @@ export class CanvasRenderer {
       ctx.lineDashOffset = 0;
     }
 
-    // edges
+    // 1. Draw Groups (Backgrounds)
+    for (const n of graph.nodes.values()) {
+      if (n.type === "core/Group") {
+        const sel = selection.has(n.id);
+        const def = this.registry?.types?.get(n.type);
+        if (def?.onDraw) def.onDraw(n, { ctx, theme });
+        else this._drawNode(n, sel);
+      }
+    }
+
+    // 2. Draw Edges
     ctx.strokeStyle = theme.edge;
     ctx.lineWidth = 2 * this.scale;
     for (const e of graph.edges.values()) this._drawEdge(graph, e);
 
     // temp edge (given in screen coords); convert to world if needed
-    // draw(graph, { selection, tempEdge }) 내부의 tempEdge 처리 구간만 교체
     if (tempEdge) {
       const a = this.screenToWorld(tempEdge.x1, tempEdge.y1);
       const b = this.screenToWorld(tempEdge.x2, tempEdge.y2);
@@ -251,22 +264,40 @@ export class CanvasRenderer {
     }
     ctx.restore();
 
-    // nodes
+    // 3. Draw Other Nodes
     for (const n of graph.nodes.values()) {
-      const sel = selection.has(n.id);
-      this._drawNode(n, sel);
-      const def = this.registry?.types?.get(n.type);
-      if (def?.onDraw) def.onDraw(n, { ctx, theme });
+      if (n.type !== "core/Group") {
+        const sel = selection.has(n.id);
+        this._drawNode(n, sel);
+        const def = this.registry?.types?.get(n.type);
+        if (def?.onDraw) def.onDraw(n, { ctx, theme });
+      }
     }
 
     this._resetTransform();
   }
 
+  _rgba(hex, a) {
+    const c = hex.replace("#", "");
+    const n = parseInt(
+      c.length === 3
+        ? c
+            .split("")
+            .map((x) => x + x)
+            .join("")
+        : c,
+      16
+    );
+    const r = (n >> 16) & 255,
+      g = (n >> 8) & 255,
+      b = n & 255;
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
   _drawNode(node, selected) {
     const { ctx, theme } = this;
     const r = 8;
-    const { x, y } = node.pos;
-    const { width: w, height: h } = node.size;
+    const { x, y, w, h } = node.computed;
     ctx.fillStyle = theme.node;
     ctx.strokeStyle = selected ? "#6cf" : "#333";
     ctx.lineWidth = (selected ? 2 : 1.2) / this.scale;

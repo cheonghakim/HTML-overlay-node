@@ -23,6 +23,7 @@
       .content-root {
         width: 100%;
         height: 100%;
+        position: relative;
       }
       canvas {
         width: 100%;
@@ -37,6 +38,7 @@
   <body>
     <div id="wrap">
       <header>
+        <button id="addGrp">Add Group</button>
         <button id="add">Add Node</button>
         <button id="save">Save</button>
         <button id="load">Load</button>
@@ -48,20 +50,28 @@
       </main>
     </div>
     <script type="module">
+      import { Graph } from "./src/core/Graph.js";
       import { createGraphEditor } from "./src/index.js";
       const cv = document.getElementById("cv");
       const editor = createGraphEditor(cv, { autorun: false });
 
       document.getElementById("add").onclick = () => {
-        editor.addNode("core/Note", {
+        editor.graph.addNode("core/Note", {
           x: 100 + Math.random() * 200,
           y: 100 + Math.random() * 100,
         });
+
+        editor.graph.addNode("core/HtmlNote", { x: 100, y: 100 })
         editor.render();
       };
 
+      document.getElementById("addGrp").onclick = () => {
+        editor.addGroup();
+        editor.render();
+      }
+
       document.getElementById("save").onclick = () => {
-        let saved = editor.toJSON();
+        let saved = editor.graph.toJSON();
         console.log(saved);
         const mime = "application/json";
         const blob = new Blob([JSON.stringify(saved)], {
@@ -94,17 +104,14 @@
               try {
                 // JSON 파싱
                 editor.graph.clear();
-                const jsonData = editor.fromJSON(JSON.parse(e.target.result));
-
-                editor.graph.nodes = jsonData.nodes;
-                editor.graph.edges = jsonData.edges;
+                
+                const jsonData = editor.graph.fromJSON(JSON.parse(e.target.result));
 
                 editor.render();
 
                 // 이벤트 해제
                 input.removeEventListener("change", changeEvt);
               } catch (error) {
-                console.error(error);
                 alert("파일을 로드 하지 못했습니다.");
               }
             };

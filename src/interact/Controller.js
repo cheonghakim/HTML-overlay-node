@@ -14,10 +14,11 @@ export class Controller {
   static MIN_NODE_WIDTH = 80;
   static MIN_NODE_HEIGHT = 60;
 
-  constructor({ graph, renderer, hooks }) {
+  constructor({ graph, renderer, hooks, htmlOverlay }) {
     this.graph = graph;
     this.renderer = renderer;
     this.hooks = hooks;
+    this.htmlOverlay = htmlOverlay;
 
     this.stack = new CommandStack();
     this.selection = new Set();
@@ -25,6 +26,8 @@ export class Controller {
     this.connecting = null; // { fromNode, fromPort, x(screen), y(screen) }
     this.panning = null; // { x(screen), y(screen) }
     this.resizing = null;
+    this.gDragging = null;
+    this.gResizing = null;
 
     this._cursor = "default";
 
@@ -103,10 +106,14 @@ export class Controller {
   }
 
   _findNodeAtWorld(x, y) {
-    const list = [...this.graph.nodes.values()];
-    for (let i = list.length - 1; i >= 0; i--) {
-      const n = list[i];
-      if (hitTestNode(n, x, y)) return n;
+    // Reverse order (top to bottom)
+    const list = [...this.graph.nodes.values()].reverse();
+    for (const n of list) {
+      // Use computed world transform for hit testing
+      const { x: nx, y: ny, w, h } = n.computed;
+      if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
+        return n;
+      }
     }
     return null;
   }
@@ -127,14 +134,6 @@ export class Controller {
     return null;
   }
 
-  _onWheel(e) {
-    e.preventDefault();
-    const { x, y } = this._posScreen(e);
-    const factor = Math.pow(1.0015, -e.deltaY); // smooth zoom
-    this.renderer.zoomAt(factor, x, y);
-    this.render();
-  }
-
   _findIncomingEdge(nodeId, portId) {
     for (const [eid, e] of this.graph.edges) {
       if (e.toNode === nodeId && e.toPort === portId) {
@@ -144,11 +143,20 @@ export class Controller {
     return null;
   }
 
+  _onWheel(e) {
+    e.preventDefault();
+    const { x, y } = this._posScreen(e);
+    const factor = Math.pow(1.0015, -e.deltaY); // smooth zoom
+    this.renderer.zoomAt(factor, x, y);
+    this.render();
+  }
+
   _resizeHandleRect(node) {
-    const s = 10; // handle size (world units)
+    const s = 10;
+    const { x, y, w, h } = node.computed;
     return {
-      x: node.pos.x + node.size.width - s,
-      y: node.pos.y + node.size.height - s,
+      x: x + w - s,
+      y: y + h - s,
       w: s,
       h: s,
     };
@@ -163,55 +171,13 @@ export class Controller {
     const s = this._posScreen(e);
     const w = this._posWorld(e);
 
-    // 0) MMB(휠 버튼) 드래그는 항상 패닝
     if (e.button === 1) {
       this.panning = { x: s.x, y: s.y };
       return;
     }
 
-    // 1) 포트(OUT) 위 좌클릭이면 연결 시작
-    const port = this._findPortAtWorld(w.x, w.y);
-    if (e.button === 0 && port && port.dir === "out") {
-      const outR = portRect(port.node, port.port, port.idx, "out");
-      const screenFrom = this.renderer.worldToScreen(outR.x, outR.y + 7);
-      this.connecting = {
-        fromNode: port.node.id,
-        fromPort: port.port.id,
-        x: screenFrom.x,
-        y: screenFrom.y,
-      };
-      return;
-    }
-
-    if (e.button === 0 && port && port.dir === "in") {
-      const incoming = this._findIncomingEdge(port.node.id, port.port.id);
-      if (incoming) {
-        const { edge, id } = incoming;
-
-        // remove as command (즉시 실행 → 미리보기에서도 사라짐)
-        const rm = RemoveEdgeCmd(this.graph, id);
-        if (rm) this.stack.exec(rm);
-
-        const outNode = this.graph.nodes.get(edge.fromNode);
-        const iOut = outNode.outputs.findIndex((p) => p.id === edge.fromPort);
-        const outR = portRect(outNode, outNode.outputs[iOut], iOut, "out");
-        const screenFrom = this.renderer.worldToScreen(outR.x, outR.y + 7);
-
-        this.connecting = {
-          fromNode: edge.fromNode,
-          fromPort: edge.fromPort,
-          x: screenFrom.x,
-          y: screenFrom.y,
-          _removedEdge: { id, edge }, // 참고용 메모 (이미 제거됨)
-        };
-        this.render();
-        return;
-      }
-      // 들어오는 엣지가 없으면 그냥 무시
-    }
-
+    // 1. Resize Handle Hit Test (for all nodes including groups)
     const node = this._findNodeAtWorld(w.x, w.y);
-    // 먼저 리사이즈 핸들 클릭인지 확인
     if (e.button === 0 && node && this._hitResizeHandle(node, w.x, w.y)) {
       this.resizing = {
         nodeId: node.id,
@@ -227,29 +193,44 @@ export class Controller {
       return;
     }
 
-    // 2) 노드 위 좌클릭이면 선택 전환 + 드래그 시작
+    // 2. Port Hit Test
+    const port = this._findPortAtWorld(w.x, w.y);
+    if (e.button === 0 && port && port.dir === "out") {
+      const outR = portRect(port.node, port.port, port.idx, "out");
+      const screenFrom = this.renderer.worldToScreen(outR.x, outR.y + 7);
+      this.connecting = {
+        fromNode: port.node.id,
+        fromPort: port.port.id,
+        x: screenFrom.x,
+        y: screenFrom.y,
+      };
+      return;
+    }
+
+    // 3. Node Hit Test (Selection & Drag)
     if (e.button === 0 && node) {
       if (!e.shiftKey) this.selection.clear();
       this.selection.add(node.id);
+      
+      // Dragging: store initial world pos difference
+      // When moving, we calculate new world pos, then convert to local
       this.dragging = {
         nodeId: node.id,
-        dx: w.x - node.pos.x,
-        dy: w.y - node.pos.y,
-        startPos: { x: node.pos.x, y: node.pos.y }, // 원위치 저장
+        offsetX: w.x - node.computed.x,
+        offsetY: w.y - node.computed.y,
+        startPos: { ...node.pos }, // for undo
       };
       this.render();
       return;
     }
 
-    // 3) 빈 공간 좌클릭이면: 선택 해제 + 패닝 시작
+    // 4. Background Click (Pan)
     if (e.button === 0) {
       if (this.selection.size) this.selection.clear();
       this.panning = { x: s.x, y: s.y };
       this.render();
       return;
     }
-
-    // 기타는 무시
   }
 
   _onMove(e) {
@@ -262,7 +243,7 @@ export class Controller {
       const dy = w.y - this.resizing.startY;
 
       const minW = Controller.MIN_NODE_WIDTH;
-      const minH = Controller.MIN_NODE_HEIGHT; // 최소 크기 (원하면 조정)
+      const minH = Controller.MIN_NODE_HEIGHT;
       n.size.width = Math.max(minW, this.resizing.startW + dx);
       n.size.height = Math.max(minH, this.resizing.startH + dy);
 
@@ -283,36 +264,45 @@ export class Controller {
 
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
-      n.pos.x = w.x - this.dragging.dx;
-      n.pos.y = w.y - this.dragging.dy;
+      
+      // Target World Pos
+      const targetWx = w.x - this.dragging.offsetX;
+      const targetWy = w.y - this.dragging.offsetY;
+
+      // Convert to Local Pos
+      // local = targetWorld - parentWorld
+      let parentWx = 0;
+      let parentWy = 0;
+      if (n.parent) {
+        parentWx = n.parent.computed.x;
+        parentWy = n.parent.computed.y;
+      }
+
+      n.pos.x = targetWx - parentWx;
+      n.pos.y = targetWy - parentWy;
+
+
       this.hooks?.emit("node:move", n);
       this.render();
       return;
     }
 
-    // 연결 드래그 프리뷰: 화면 좌표로 저장
     if (this.connecting) {
       this.connecting.x = s.x;
       this.connecting.y = s.y;
       this.render();
     }
 
-    const port = this._findPortAtWorld(w.x, w.y);
-    if (port && (port.dir === "out" || port.dir === "in")) {
-      this._setCursor("grabbing");
-    } else {
-      this._setCursor("default");
-    }
-
+    // Cursor update
     const node = this._findNodeAtWorld(w.x, w.y);
     if (node && this._hitResizeHandle(node, w.x, w.y)) {
       this._setCursor("se-resize");
-      this.render();
+    } else {
+      this._setCursor("default");
     }
   }
 
   _onUp(e) {
-    const s = this._posScreen(e);
     const w = this._posWorld(e);
 
     if (this.panning) {
@@ -321,11 +311,11 @@ export class Controller {
     }
 
     if (this.connecting) {
+      // ... (existing connection logic)
       const from = this.connecting;
       const portIn = this._findPortAtWorld(w.x, w.y);
       if (portIn && portIn.dir === "in") {
-        // AddEdge as command
-        this.stack.exec(
+         this.stack.exec(
           AddEdgeCmd(
             this.graph,
             from.fromNode,
@@ -335,8 +325,6 @@ export class Controller {
           )
         );
       }
-      // else: 빈 곳에 놓으면 이미 RemoveEdgeCmd 실행된 상태 → "해제" 완료
-
       this.connecting = null;
       this.render();
     }
@@ -350,21 +338,52 @@ export class Controller {
       }
       this.resizing = null;
       this._setCursor("default");
-      // render()는 위에서 이미 호출하고 있으면 생략 가능
     }
 
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
-      const start = this.dragging.startPos;
-      const end = { x: n.pos.x, y: n.pos.y };
-      // 위치가 바뀐 경우만 커밋
-      if (start.x !== end.x || start.y !== end.y) {
-        this.stack.exec(MoveNodeCmd(n, start, end));
+      
+      // Reparenting Logic
+      // Check if dropped onto a group
+      // We need to find the group under the mouse, excluding the node itself and its children
+      const potentialParent = this._findPotentialParent(w.x, w.y, n);
+      
+      if (potentialParent && potentialParent !== n.parent) {
+        this.graph.reparent(n, potentialParent);
+      } else if (!potentialParent && n.parent) {
+        // Dropped on empty space -> move to root
+        this.graph.reparent(n, null);
       }
-      this.dragging = null;
-    }
 
-    this.dragging = null;
+      this.dragging = null;
+      this.render();
+    }
+  }
+
+  _findPotentialParent(x, y, excludeNode) {
+    // Find top-most group under x,y that is not excludeNode or its descendants
+    const list = [...this.graph.nodes.values()].reverse();
+    for (const n of list) {
+      if (n.type !== "core/Group") continue;
+      if (n === excludeNode) continue;
+      // Check if n is descendant of excludeNode
+      let p = n.parent;
+      let isDescendant = false;
+      while(p) {
+        if (p === excludeNode) {
+          isDescendant = true;
+          break;
+        }
+        p = p.parent;
+      }
+      if (isDescendant) continue;
+
+      const { x: nx, y: ny, w, h } = n.computed;
+      if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
+        return n;
+      }
+    }
+    return null;
   }
 
   render() {
@@ -372,8 +391,10 @@ export class Controller {
 
     this.renderer.draw(this.graph, {
       selection: this.selection,
-      tempEdge: tEdge, // 그대로 전달
+      tempEdge: tEdge,
     });
+    
+    this.htmlOverlay?.draw(this.graph, this.selection);
   }
 
   renderTempEdge() {

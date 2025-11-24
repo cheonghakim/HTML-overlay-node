@@ -11,6 +11,11 @@ export class Node {
     this.inputs = []; // {id,name,datatype}
     this.outputs = []; // {id,name,datatype}
     this.state = {}; // 사용자 상태
+
+    // Tree Structure
+    this.parent = null; // Parent Node (or null if root)
+    this.children = new Set(); // Set<Node>
+    this.computed = { x: 0, y: 0, w: 0, h: 0 }; // World Transform
   }
   addInput(name, datatype = "any") {
     const port = { id: randomUUID(), name, datatype, dir: "in" };
