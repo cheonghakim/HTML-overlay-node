@@ -343,20 +343,60 @@ export class Controller {
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
       
-      // Reparenting Logic
-      // Check if dropped onto a group
-      // We need to find the group under the mouse, excluding the node itself and its children
-      const potentialParent = this._findPotentialParent(w.x, w.y, n);
-      
-      if (potentialParent && potentialParent !== n.parent) {
-        this.graph.reparent(n, potentialParent);
-      } else if (!potentialParent && n.parent) {
-        // Dropped on empty space -> move to root
-        this.graph.reparent(n, null);
+      // If we're dragging a GROUP, check for nodes to auto-parent
+      if (n.type === "core/Group") {
+        this._autoParentNodesInGroup(n);
+      } else {
+        // Normal node: Reparenting Logic
+        // Check if dropped onto a group
+        const potentialParent = this._findPotentialParent(w.x, w.y, n);
+        
+        if (potentialParent && potentialParent !== n.parent) {
+          this.graph.reparent(n, potentialParent);
+        } else if (!potentialParent && n.parent) {
+          // Dropped on empty space -> move to root
+          this.graph.reparent(n, null);
+        }
       }
 
       this.dragging = null;
       this.render();
+    }
+  }
+
+  /**
+   * Automatically parent nodes that are within the group's bounds
+   * @param {Node} groupNode - The group node
+   */
+  _autoParentNodesInGroup(groupNode) {
+    const { x: gx, y: gy, w: gw, h: gh } = groupNode.computed;
+    
+    // Find all nodes that are within the group bounds
+    for (const node of this.graph.nodes.values()) {
+      // Skip the group itself
+      if (node === groupNode) continue;
+      
+      // Skip if it's already a child of this group
+      if (node.parent === groupNode) continue;
+      
+      // Skip if it's another group (prevent nested groups for now)
+      if (node.type === "core/Group") continue;
+      
+      // Check if node is within group bounds
+      const { x: nx, y: ny, w: nw, h: nh } = node.computed;
+      const nodeCenterX = nx + nw / 2;
+      const nodeCenterY = ny + nh / 2;
+      
+      // Use center point to determine if node is inside group
+      if (
+        nodeCenterX >= gx &&
+        nodeCenterX <= gx + gw &&
+        nodeCenterY >= gy &&
+        nodeCenterY <= gy + gh
+      ) {
+        // Parent this node to the group
+        this.graph.reparent(node, groupNode);
+      }
     }
   }
 
