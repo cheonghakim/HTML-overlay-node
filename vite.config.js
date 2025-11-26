@@ -10,4 +10,14 @@ export default defineConfig({
     sourcemap: true,
     minify: "terser",
   },
+  test: {
+    globals: true,
+    environment: "jsdom",
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json", "html"],
+      include: ["src/**/*.js"],
+      exclude: ["**/*.test.js", "**/*.spec.js"],
+    },
+  },
 });

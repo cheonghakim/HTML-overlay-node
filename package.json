@@ -1,20 +1,65 @@
 {
   "name": "free-node",
   "version": "0.0.1",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "vite build",
-    "dev": "vite"
+  "description": "A customizable, LiteGraph-style node editor library with canvas rendering, HTML overlays, and flexible execution control",
+  "main": "dist/free-node.umd.js",
+  "module": "dist/free-node.es.js",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/free-node.es.js",
+      "require": "./dist/free-node.umd.js"
+    }
   },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix",
+    "format": "prettier --write \"src/**/*.js\" \"*.md\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"*.md\" \"*.json\"",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "node-editor",
+    "graph-editor",
+    "visual-programming",
+    "canvas",
+    "litegraph",
+    "node-graph",
+    "data-flow",
+    "workflow",
+    "visual-scripting"
+  ],
   "author": "cheonghakim",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cheonghakim/free-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cheonghakim/free-node/issues"
+  },
+  "homepage": "https://github.com/cheonghakim/free-node#readme",
   "dependencies": {
     "vite": "^6.3.5"
   },
-  "type": "module",
   "devDependencies": {
-    "terser": "^5.43.1"
+    "@eslint/js": "^9.39.1",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^9.17.0",
+    "jsdom": "^27.2.0",
+    "prettier": "^3.4.2",
+    "terser": "^5.43.1",
+    "vitest": "^2.1.8"
   }
 }

@@ -17,6 +17,13 @@ export class GroupManager {
     color = "#39424e",
     members = [],
   } = {}) {
+    // Validate parameters
+    if (width < 100 || height < 60) {
+      console.warn("Group size too small, using minimum size");
+      width = Math.max(100, width);
+      height = Math.max(60, height);
+    }
+
     const groupNode = this.graph.addNode("core/Group", {
       title,
       x,
@@ -26,11 +33,17 @@ export class GroupManager {
     });
     groupNode.state.color = color;
 
-    // Reparent members
+    // Reparent members with validation
     for (const memberId of members) {
       const node = this.graph.getNodeById(memberId);
       if (node) {
+        if (node.type === "core/Group") {
+          console.warn(`Cannot add group ${memberId} as member of another group`);
+          continue;
+        }
         this.graph.reparent(node, groupNode);
+      } else {
+        console.warn(`Member node ${memberId} not found, skipping`);
       }
     }
     

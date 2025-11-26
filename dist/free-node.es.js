@@ -5,21 +5,61 @@ class Registry {
   constructor() {
     this.types = /* @__PURE__ */ new Map();
   }
+  /**
+   * Register a new node type
+   * @param {string} type - Unique type identifier (e.g., "core/Note")
+   * @param {Object} def - Node definition
+   * @param {string} [def.title] - Display title
+   * @param {Object} [def.size] - Default size {w, h}
+   * @param {Array} [def.inputs] - Input port definitions
+   * @param {Array} [def.outputs] - Output port definitions
+   * @param {Function} [def.onCreate] - Called when node is created
+   * @param {Function} [def.onExecute] - Called each execution cycle
+   * @param {Function} [def.onDraw] - Custom drawing function
+   * @param {Object} [def.html] - HTML overlay configuration
+   * @throws {Error} If type is already registered or invalid
+   */
   register(type, def) {
-    if (this.types.has(type)) throw new Error(`Node type exists: ${type}`);
+    if (!type || typeof type !== "string") {
+      throw new Error(`Invalid node type: type must be a non-empty string, got ${typeof type}`);
+    }
+    if (!def || typeof def !== "object") {
+      throw new Error(`Invalid definition for type "${type}": definition must be an object`);
+    }
+    if (this.types.has(type)) {
+      throw new Error(`Node type "${type}" is already registered. Use unregister() first to replace it.`);
+    }
     this.types.set(type, def);
   }
+  /**
+   * Unregister a node type
+   * @param {string} type - Type identifier to unregister
+   * @throws {Error} If type doesn't exist
+   */
   unregister(type) {
-    if (this.types.has(type)) throw new Error(`Node type exists: ${type}`);
+    if (!this.types.has(type)) {
+      throw new Error(`Cannot unregister type "${type}": type is not registered`);
+    }
     this.types.delete(type);
   }
+  /**
+   * Remove all registered node types
+   */
   removeAll() {
     this.types.clear();
-    this.types = /* @__PURE__ */ new Map();
   }
+  /**
+   * Get the definition for a registered node type
+   * @param {string} type - Type identifier
+   * @returns {Object} Node definition
+   * @throws {Error} If type is not registered
+   */
   createInstance(type) {
     const def = this.types.get(type);
-    if (!def) throw new Error(`Unknown node type: ${type}`);
+    if (!def) {
+      const available = Array.from(this.types.keys()).join(", ") || "none";
+      throw new Error(`Unknown node type: "${type}". Available types: ${available}`);
+    }
     return def;
   }
 }
@@ -72,7 +112,21 @@ function randomUUID() {
   return hex.slice(0, 4).join("") + "-" + hex.slice(4, 6).join("") + "-" + hex.slice(6, 8).join("") + "-" + hex.slice(8, 10).join("") + "-" + hex.slice(10, 16).join("");
 }
 class Node {
+  /**
+   * Create a new Node
+   * @param {Object} options - Node configuration
+   * @param {string} [options.id] - Unique identifier (auto-generated if not provided)
+   * @param {string} options.type - Node type identifier
+   * @param {string} [options.title] - Display title (defaults to type)
+   * @param {number} [options.x=0] - X position
+   * @param {number} [options.y=0] - Y position
+   * @param {number} [options.width=160] - Node width
+   * @param {number} [options.height=60] - Node height
+   */
   constructor({ id, type, title, x = 0, y = 0, width = 160, height = 60 }) {
+    if (!type) {
+      throw new Error("Node type is required");
+    }
     this.id = id ?? randomUUID();
     this.type = type;
     this.title = title ?? type;
@@ -81,20 +135,53 @@ class Node {
     this.inputs = [];
     this.outputs = [];
     this.state = {};
+    this.parent = null;
+    this.children = /* @__PURE__ */ new Set();
+    this.computed = { x: 0, y: 0, w: 0, h: 0 };
   }
+  /**
+   * Add an input port to this node
+   * @param {string} name - Port name
+   * @param {string} [datatype="any"] - Data type for the port
+   * @returns {Object} The created port
+   */
   addInput(name, datatype = "any") {
+    if (!name || typeof name !== "string") {
+      throw new Error("Input port name must be a non-empty string");
+    }
     const port = { id: randomUUID(), name, datatype, dir: "in" };
     this.inputs.push(port);
     return port;
   }
+  /**
+   * Add an output port to this node
+   * @param {string} name - Port name
+   * @param {string} [datatype="any"] - Data type for the port
+   * @returns {Object} The created port
+   */
   addOutput(name, datatype = "any") {
+    if (!name || typeof name !== "string") {
+      throw new Error("Output port name must be a non-empty string");
+    }
     const port = { id: randomUUID(), name, datatype, dir: "out" };
     this.outputs.push(port);
     return port;
   }
 }
 class Edge {
+  /**
+   * Create a new Edge
+   * @param {Object} options - Edge configuration
+   * @param {string} [options.id] - Unique identifier (auto-generated if not provided)
+   * @param {string} options.fromNode - Source node ID
+   * @param {string} options.fromPort - Source port ID
+   * @param {string} options.toNode - Target node ID
+   * @param {string} options.toPort - Target port ID
+   */
   constructor({ id, fromNode, fromPort, toNode, toPort }) {
+    if (!fromNode || !fromPort || !toNode || !toPort) {
+      throw new Error("Edge requires fromNode, fromPort, toNode, and toPort");
+    }
     this.id = id ?? randomUUID();
     this.fromNode = fromNode;
     this.fromPort = fromPort;
@@ -102,8 +189,105 @@ class Edge {
     this.toPort = toPort;
   }
 }
+class GroupManager {
+  constructor({ graph, hooks }) {
+    this.graph = graph;
+    this.hooks = hooks;
+  }
+  // ---------- CRUD ----------
+  addGroup({
+    title = "Group",
+    x = 0,
+    y = 0,
+    width = 240,
+    height = 160,
+    color = "#39424e",
+    members = []
+  } = {}) {
+    var _a;
+    if (width < 100 || height < 60) {
+      console.warn("Group size too small, using minimum size");
+      width = Math.max(100, width);
+      height = Math.max(60, height);
+    }
+    const groupNode = this.graph.addNode("core/Group", {
+      title,
+      x,
+      y,
+      width,
+      height
+    });
+    groupNode.state.color = color;
+    for (const memberId of members) {
+      const node = this.graph.getNodeById(memberId);
+      if (node) {
+        if (node.type === "core/Group") {
+          console.warn(`Cannot add group ${memberId} as member of another group`);
+          continue;
+        }
+        this.graph.reparent(node, groupNode);
+      } else {
+        console.warn(`Member node ${memberId} not found, skipping`);
+      }
+    }
+    (_a = this.hooks) == null ? void 0 : _a.emit("group:change");
+    return groupNode;
+  }
+  addGroupFromSelection({ title = "Group", margin = { x: 12, y: 12 } } = {}) {
+    return null;
+  }
+  removeGroup(id) {
+    var _a;
+    const groupNode = this.graph.getNodeById(id);
+    if (!groupNode || groupNode.type !== "core/Group") return;
+    const children = [...groupNode.children];
+    for (const child of children) {
+      this.graph.reparent(child, groupNode.parent);
+    }
+    this.graph.removeNode(id);
+    (_a = this.hooks) == null ? void 0 : _a.emit("group:change");
+  }
+  // ---------- 이동/리사이즈 ----------
+  // 이제 Node의 이동/리사이즈 로직을 따름.
+  // Controller에서 Node 이동 시 updateWorldTransforms가 호출되므로 자동 처리됨.
+  resizeGroup(id, dw, dh) {
+    var _a;
+    const g = this.graph.getNodeById(id);
+    if (!g || g.type !== "core/Group") return;
+    const minW = 100;
+    const minH = 60;
+    g.size.width = Math.max(minW, g.size.width + dw);
+    g.size.height = Math.max(minH, g.size.height + dh);
+    this.graph.updateWorldTransforms();
+    (_a = this.hooks) == null ? void 0 : _a.emit("group:change");
+  }
+  // ---------- 히트테스트 & 드래그 ----------
+  // 이제 Group도 Node이므로 Controller의 Node 히트테스트 로직을 따름.
+  // 단, Resize Handle은 별도 처리가 필요할 수 있음.
+  hitTestResizeHandle(x, y) {
+    const handleSize = 10;
+    const nodes = [...this.graph.nodes.values()].reverse();
+    for (const node of nodes) {
+      if (node.type !== "core/Group") continue;
+      const { x: gx, y: gy, w: gw, h: gh } = node.computed;
+      if (x >= gx + gw - handleSize && x <= gx + gw && y >= gy + gh - handleSize && y <= gy + gh) {
+        return { group: node, handle: "se" };
+      }
+    }
+    return null;
+  }
+}
 class Graph {
+  /**
+   * Create a new Graph
+   * @param {Object} options - Graph configuration
+   * @param {Object} options.hooks - Event hooks system
+   * @param {Object} options.registry - Node type registry
+   */
   constructor({ hooks, registry }) {
+    if (!registry) {
+      throw new Error("Graph requires a registry");
+    }
     this.nodes = /* @__PURE__ */ new Map();
     this.edges = /* @__PURE__ */ new Map();
     this.hooks = hooks;
@@ -111,19 +295,33 @@ class Graph {
     this._valuesA = /* @__PURE__ */ new Map();
     this._valuesB = /* @__PURE__ */ new Map();
     this._useAasCurrent = true;
+    this.groupManager = new GroupManager({
+      graph: this,
+      hooks: this.hooks
+    });
   }
+  /**
+   * Get a node by its ID
+   * @param {string} id - Node ID
+   * @returns {Node|null} The node or null if not found
+   */
   getNodeById(id) {
-    for (let [_id, node] of this.nodes.entries()) {
-      if (id === _id) {
-        return node;
-      }
-    }
-    return null;
+    return this.nodes.get(id) || null;
   }
+  /**
+   * Add a node to the graph
+   * @param {string} type - Node type identifier
+   * @param {Object} [opts={}] - Additional node options (x, y, width, height, etc.)
+   * @returns {Node} The created node
+   * @throws {Error} If node type is not registered
+   */
   addNode(type, opts = {}) {
     var _a, _b, _c, _d;
     const def = this.registry.types.get(type);
-    if (!def) throw new Error(`Unknown node type: ${type}`);
+    if (!def) {
+      const available = Array.from(this.registry.types.keys()).join(", ") || "none";
+      throw new Error(`Unknown node type: "${type}". Available types: ${available}`);
+    }
     const node = new Node({
       type,
       title: def.title,
@@ -138,24 +336,81 @@ class Graph {
     (_d = this.hooks) == null ? void 0 : _d.emit("node:create", node);
     return node;
   }
+  /**
+   * Remove a node and its connected edges from the graph
+   * @param {string} nodeId - ID of the node to remove
+   */
   removeNode(nodeId) {
-    for (const [eid, e] of this.edges)
-      if (e.fromNode === nodeId || e.toNode === nodeId) this.edges.delete(eid);
+    for (const [eid, e] of this.edges) {
+      if (e.fromNode === nodeId || e.toNode === nodeId) {
+        this.edges.delete(eid);
+      }
+    }
     this.nodes.delete(nodeId);
   }
+  /**
+   * Add an edge connecting two node ports
+   * @param {string} fromNode - Source node ID
+   * @param {string} fromPort - Source port ID
+   * @param {string} toNode - Target node ID
+   * @param {string} toPort - Target port ID
+   * @returns {Edge} The created edge
+   * @throws {Error} If nodes don't exist
+   */
   addEdge(fromNode, fromPort, toNode, toPort) {
     var _a;
+    if (!this.nodes.has(fromNode)) {
+      throw new Error(`Cannot create edge: source node "${fromNode}" not found`);
+    }
+    if (!this.nodes.has(toNode)) {
+      throw new Error(`Cannot create edge: target node "${toNode}" not found`);
+    }
     const e = new Edge({ fromNode, fromPort, toNode, toPort });
     this.edges.set(e.id, e);
     (_a = this.hooks) == null ? void 0 : _a.emit("edge:create", e);
     return e;
   }
+  /**
+   * Clear all nodes and edges from the graph
+   */
   clear() {
-    var _a, _b;
-    (_a = this.nodes) == null ? void 0 : _a.clear();
-    (_b = this.edges) == null ? void 0 : _b.clear();
-    this.nodes = /* @__PURE__ */ new Map();
-    this.edges = /* @__PURE__ */ new Map();
+    this.nodes.clear();
+    this.edges.clear();
+  }
+  updateWorldTransforms() {
+    const roots = [];
+    for (const n of this.nodes.values()) {
+      if (!n.parent) roots.push(n);
+    }
+    const stack = roots.map((n) => ({ node: n, px: 0, py: 0 }));
+    while (stack.length > 0) {
+      const { node, px, py } = stack.pop();
+      node.computed.x = px + node.pos.x;
+      node.computed.y = py + node.pos.y;
+      node.computed.w = node.size.width;
+      node.computed.h = node.size.height;
+      for (const child of node.children) {
+        stack.push({ node: child, px: node.computed.x, py: node.computed.y });
+      }
+    }
+  }
+  reparent(node, newParent) {
+    if (node.parent === newParent) return;
+    const wx = node.computed.x;
+    const wy = node.computed.y;
+    if (node.parent) {
+      node.parent.children.delete(node);
+    }
+    node.parent = newParent;
+    if (newParent) {
+      newParent.children.add(node);
+      node.pos.x = wx - newParent.computed.x;
+      node.pos.y = wy - newParent.computed.y;
+    } else {
+      node.pos.x = wx;
+      node.pos.y = wy;
+    }
+    this.updateWorldTransforms();
   }
   // buffer helpers
   _curBuf() {
@@ -200,8 +455,8 @@ class Graph {
     (_a = this.hooks) == null ? void 0 : _a.emit("graph:serialize", json);
     return json;
   }
-  static fromJSON(json, { hooks, registry }) {
-    const g = new Graph({ hooks, registry });
+  fromJSON(json) {
+    this.clear();
     for (const nd of json.nodes) {
       const node = new Node({
         id: nd.id,
@@ -215,23 +470,22 @@ class Graph {
       node.inputs = nd.inputs;
       node.outputs = nd.outputs;
       node.state = nd.state || {};
-      g.nodes.set(node.id, node);
+      this.nodes.set(node.id, node);
     }
-    for (const ed of json.edges) g.edges.set(ed.id, new Edge(ed));
-    return g;
+    for (const ed of json.edges) this.edges.set(ed.id, new Edge(ed));
+    return this;
   }
 }
-function hitTestNode(node, x, y) {
-  const { x: nx, y: ny } = node.pos;
-  const { width, height } = node.size;
-  return x >= nx && x <= nx + width && y >= ny && y <= ny + height;
-}
 function portRect(node, port, idx, dir) {
+  const { x: nx, y: ny, w: width } = node.computed || {
+    x: node.pos.x,
+    y: node.pos.y,
+    w: node.size.width
+  };
   const pad = 8, row = 20;
-  const y = node.pos.y + 28 + idx * row;
-  if (dir === "in") return { x: node.pos.x - pad, y, w: pad, h: 14 };
-  if (dir === "out")
-    return { x: node.pos.x + node.size.width, y, w: pad, h: 14 };
+  const y = ny + 28 + idx * row;
+  if (dir === "in") return { x: nx - pad, y, w: pad, h: 14 };
+  if (dir === "out") return { x: nx + width, y, w: pad, h: 14 };
 }
 const _CanvasRenderer = class _CanvasRenderer {
   constructor(canvas, { theme = {}, registry, edgeStyle = "orthogonal" } = {}) {
@@ -384,9 +638,11 @@ const _CanvasRenderer = class _CanvasRenderer {
     tempEdge = null,
     running = false,
     time = performance.now(),
-    dt = 0
+    dt = 0,
+    groups = null
   } = {}) {
-    var _a, _b;
+    var _a, _b, _c, _d;
+    graph.updateWorldTransforms();
     this.drawGrid();
     const { ctx, theme } = this;
     this._applyTransform();
@@ -399,6 +655,14 @@ const _CanvasRenderer = class _CanvasRenderer {
     } else {
       ctx.setLineDash([]);
       ctx.lineDashOffset = 0;
+    }
+    for (const n of graph.nodes.values()) {
+      if (n.type === "core/Group") {
+        const sel = selection.has(n.id);
+        const def = (_b = (_a = this.registry) == null ? void 0 : _a.types) == null ? void 0 : _b.get(n.type);
+        if (def == null ? void 0 : def.onDraw) def.onDraw(n, { ctx, theme });
+        else this._drawNode(n, sel);
+      }
     }
     ctx.strokeStyle = theme.edge;
     ctx.lineWidth = 2 * this.scale;
@@ -435,18 +699,28 @@ const _CanvasRenderer = class _CanvasRenderer {
     }
     ctx.restore();
     for (const n of graph.nodes.values()) {
-      const sel = selection.has(n.id);
-      this._drawNode(n, sel);
-      const def = (_b = (_a = this.registry) == null ? void 0 : _a.types) == null ? void 0 : _b.get(n.type);
-      if (def == null ? void 0 : def.onDraw) def.onDraw(n, { ctx, theme });
+      if (n.type !== "core/Group") {
+        const sel = selection.has(n.id);
+        this._drawNode(n, sel);
+        const def = (_d = (_c = this.registry) == null ? void 0 : _c.types) == null ? void 0 : _d.get(n.type);
+        if (def == null ? void 0 : def.onDraw) def.onDraw(n, { ctx, theme });
+      }
     }
     this._resetTransform();
+  }
+  _rgba(hex, a) {
+    const c = hex.replace("#", "");
+    const n = parseInt(
+      c.length === 3 ? c.split("").map((x) => x + x).join("") : c,
+      16
+    );
+    const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
+    return `rgba(${r},${g},${b},${a})`;
   }
   _drawNode(node, selected) {
     const { ctx, theme } = this;
     const r = 8;
-    const { x, y } = node.pos;
-    const { width: w, height: h } = node.size;
+    const { x, y, w, h } = node.computed;
     ctx.fillStyle = theme.node;
     ctx.strokeStyle = selected ? "#6cf" : "#333";
     ctx.lineWidth = (selected ? 2 : 1.2) / this.scale;
@@ -556,16 +830,6 @@ function findEdgeId(graph, a, b, c, d) {
   }
   return null;
 }
-function MoveNodeCmd(node, fromPos, toPos) {
-  return {
-    do() {
-      node.pos = { ...toPos };
-    },
-    undo() {
-      node.pos = { ...fromPos };
-    }
-  };
-}
 function AddEdgeCmd(graph, fromNode, fromPort, toNode, toPort) {
   let addedId = null;
   return {
@@ -576,19 +840,6 @@ function AddEdgeCmd(graph, fromNode, fromPort, toNode, toPort) {
     undo() {
       const id = addedId ?? findEdgeId(graph, fromNode, fromPort, toNode, toPort);
       if (id != null) graph.edges.delete(id);
-    }
-  };
-}
-function RemoveEdgeCmd(graph, edgeId) {
-  const e = graph.edges.get(edgeId);
-  if (!e) return null;
-  const { fromNode, fromPort, toNode, toPort } = e;
-  return {
-    do() {
-      graph.edges.delete(edgeId);
-    },
-    undo() {
-      graph.addEdge(fromNode, fromPort, toNode, toPort);
     }
   };
 }
@@ -655,16 +906,19 @@ class CommandStack {
   }
 }
 const _Controller = class _Controller {
-  constructor({ graph, renderer, hooks }) {
+  constructor({ graph, renderer, hooks, htmlOverlay }) {
     this.graph = graph;
     this.renderer = renderer;
     this.hooks = hooks;
+    this.htmlOverlay = htmlOverlay;
     this.stack = new CommandStack();
     this.selection = /* @__PURE__ */ new Set();
     this.dragging = null;
     this.connecting = null;
     this.panning = null;
     this.resizing = null;
+    this.gDragging = null;
+    this.gResizing = null;
     this._cursor = "default";
     this._onKeyPressEvt = this._onKeyPress.bind(this);
     this._onDownEvt = this._onDown.bind(this);
@@ -727,10 +981,12 @@ const _Controller = class _Controller {
     return this.renderer.screenToWorld(s.x, s.y);
   }
   _findNodeAtWorld(x, y) {
-    const list = [...this.graph.nodes.values()];
-    for (let i = list.length - 1; i >= 0; i--) {
-      const n = list[i];
-      if (hitTestNode(n, x, y)) return n;
+    const list = [...this.graph.nodes.values()].reverse();
+    for (const n of list) {
+      const { x: nx, y: ny, w, h } = n.computed;
+      if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
+        return n;
+      }
     }
     return null;
   }
@@ -749,13 +1005,6 @@ const _Controller = class _Controller {
     }
     return null;
   }
-  _onWheel(e) {
-    e.preventDefault();
-    const { x, y } = this._posScreen(e);
-    const factor = Math.pow(1.0015, -e.deltaY);
-    this.renderer.zoomAt(factor, x, y);
-    this.render();
-  }
   _findIncomingEdge(nodeId, portId) {
     for (const [eid, e] of this.graph.edges) {
       if (e.toNode === nodeId && e.toPort === portId) {
@@ -764,11 +1013,19 @@ const _Controller = class _Controller {
     }
     return null;
   }
+  _onWheel(e) {
+    e.preventDefault();
+    const { x, y } = this._posScreen(e);
+    const factor = Math.pow(1.0015, -e.deltaY);
+    this.renderer.zoomAt(factor, x, y);
+    this.render();
+  }
   _resizeHandleRect(node) {
     const s = 10;
+    const { x, y, w, h } = node.computed;
     return {
-      x: node.pos.x + node.size.width - s,
-      y: node.pos.y + node.size.height - s,
+      x: x + w - s,
+      y: y + h - s,
       w: s,
       h: s
     };
@@ -783,40 +1040,6 @@ const _Controller = class _Controller {
     if (e.button === 1) {
       this.panning = { x: s.x, y: s.y };
       return;
-    }
-    const port = this._findPortAtWorld(w.x, w.y);
-    if (e.button === 0 && port && port.dir === "out") {
-      const outR = portRect(port.node, port.port, port.idx, "out");
-      const screenFrom = this.renderer.worldToScreen(outR.x, outR.y + 7);
-      this.connecting = {
-        fromNode: port.node.id,
-        fromPort: port.port.id,
-        x: screenFrom.x,
-        y: screenFrom.y
-      };
-      return;
-    }
-    if (e.button === 0 && port && port.dir === "in") {
-      const incoming = this._findIncomingEdge(port.node.id, port.port.id);
-      if (incoming) {
-        const { edge, id } = incoming;
-        const rm = RemoveEdgeCmd(this.graph, id);
-        if (rm) this.stack.exec(rm);
-        const outNode = this.graph.nodes.get(edge.fromNode);
-        const iOut = outNode.outputs.findIndex((p) => p.id === edge.fromPort);
-        const outR = portRect(outNode, outNode.outputs[iOut], iOut, "out");
-        const screenFrom = this.renderer.worldToScreen(outR.x, outR.y + 7);
-        this.connecting = {
-          fromNode: edge.fromNode,
-          fromPort: edge.fromPort,
-          x: screenFrom.x,
-          y: screenFrom.y,
-          _removedEdge: { id, edge }
-          // 참고용 메모 (이미 제거됨)
-        };
-        this.render();
-        return;
-      }
     }
     const node = this._findNodeAtWorld(w.x, w.y);
     if (e.button === 0 && node && this._hitResizeHandle(node, w.x, w.y)) {
@@ -833,15 +1056,27 @@ const _Controller = class _Controller {
       this.render();
       return;
     }
+    const port = this._findPortAtWorld(w.x, w.y);
+    if (e.button === 0 && port && port.dir === "out") {
+      const outR = portRect(port.node, port.port, port.idx, "out");
+      const screenFrom = this.renderer.worldToScreen(outR.x, outR.y + 7);
+      this.connecting = {
+        fromNode: port.node.id,
+        fromPort: port.port.id,
+        x: screenFrom.x,
+        y: screenFrom.y
+      };
+      return;
+    }
     if (e.button === 0 && node) {
       if (!e.shiftKey) this.selection.clear();
       this.selection.add(node.id);
       this.dragging = {
         nodeId: node.id,
-        dx: w.x - node.pos.x,
-        dy: w.y - node.pos.y,
-        startPos: { x: node.pos.x, y: node.pos.y }
-        // 원위치 저장
+        offsetX: w.x - node.computed.x,
+        offsetY: w.y - node.computed.y,
+        startPos: { ...node.pos }
+        // for undo
       };
       this.render();
       return;
@@ -880,8 +1115,16 @@ const _Controller = class _Controller {
     }
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
-      n.pos.x = w.x - this.dragging.dx;
-      n.pos.y = w.y - this.dragging.dy;
+      const targetWx = w.x - this.dragging.offsetX;
+      const targetWy = w.y - this.dragging.offsetY;
+      let parentWx = 0;
+      let parentWy = 0;
+      if (n.parent) {
+        parentWx = n.parent.computed.x;
+        parentWy = n.parent.computed.y;
+      }
+      n.pos.x = targetWx - parentWx;
+      n.pos.y = targetWy - parentWy;
       (_b = this.hooks) == null ? void 0 : _b.emit("node:move", n);
       this.render();
       return;
@@ -891,20 +1134,14 @@ const _Controller = class _Controller {
       this.connecting.y = s.y;
       this.render();
     }
-    const port = this._findPortAtWorld(w.x, w.y);
-    if (port && (port.dir === "out" || port.dir === "in")) {
-      this._setCursor("grabbing");
-    } else {
-      this._setCursor("default");
-    }
     const node = this._findNodeAtWorld(w.x, w.y);
     if (node && this._hitResizeHandle(node, w.x, w.y)) {
       this._setCursor("se-resize");
-      this.render();
+    } else {
+      this._setCursor("default");
     }
   }
   _onUp(e) {
-    this._posScreen(e);
     const w = this._posWorld(e);
     if (this.panning) {
       this.panning = null;
@@ -939,22 +1176,46 @@ const _Controller = class _Controller {
     }
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
-      const start = this.dragging.startPos;
-      const end = { x: n.pos.x, y: n.pos.y };
-      if (start.x !== end.x || start.y !== end.y) {
-        this.stack.exec(MoveNodeCmd(n, start, end));
+      const potentialParent = this._findPotentialParent(w.x, w.y, n);
+      if (potentialParent && potentialParent !== n.parent) {
+        this.graph.reparent(n, potentialParent);
+      } else if (!potentialParent && n.parent) {
+        this.graph.reparent(n, null);
       }
       this.dragging = null;
+      this.render();
     }
-    this.dragging = null;
+  }
+  _findPotentialParent(x, y, excludeNode) {
+    const list = [...this.graph.nodes.values()].reverse();
+    for (const n of list) {
+      if (n.type !== "core/Group") continue;
+      if (n === excludeNode) continue;
+      let p = n.parent;
+      let isDescendant = false;
+      while (p) {
+        if (p === excludeNode) {
+          isDescendant = true;
+          break;
+        }
+        p = p.parent;
+      }
+      if (isDescendant) continue;
+      const { x: nx, y: ny, w, h } = n.computed;
+      if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
+        return n;
+      }
+    }
+    return null;
   }
   render() {
+    var _a;
     const tEdge = this.renderTempEdge();
     this.renderer.draw(this.graph, {
       selection: this.selection,
       tempEdge: tEdge
-      // 그대로 전달
     });
+    (_a = this.htmlOverlay) == null ? void 0 : _a.draw(this.graph, this.selection);
   }
   renderTempEdge() {
     if (!this.connecting) return null;
@@ -1061,6 +1322,133 @@ class Runner {
     (_b = (_a = this.hooks) == null ? void 0 : _a.emit) == null ? void 0 : _b.call(_a, "runner:stop");
   }
 }
+class HtmlOverlay {
+  /**
+   * @param {HTMLElement} host  캔버스를 감싸는 래퍼( position: relative )
+   * @param {CanvasRenderer} renderer
+   * @param {Registry} registry
+   */
+  constructor(host, renderer, registry) {
+    this.host = host;
+    this.renderer = renderer;
+    this.registry = registry;
+    this.container = document.createElement("div");
+    Object.assign(this.container.style, {
+      position: "absolute",
+      inset: "0",
+      pointerEvents: "none",
+      // 기본은 통과
+      zIndex: "10"
+    });
+    host.appendChild(this.container);
+    this.nodes = /* @__PURE__ */ new Map();
+  }
+  /** 기본 노드 레이아웃 생성 (헤더 + 바디) */
+  _createDefaultNodeLayout(node) {
+    const container = document.createElement("div");
+    Object.assign(container.style, {
+      position: "absolute",
+      display: "flex",
+      flexDirection: "column",
+      boxSizing: "border-box",
+      pointerEvents: "none",
+      // 기본은 통과 (캔버스 인터랙션 위해)
+      overflow: "hidden"
+      // 둥근 모서리 등
+    });
+    const header = document.createElement("div");
+    header.className = "node-header";
+    Object.assign(header.style, {
+      height: "24px",
+      flexShrink: "0",
+      display: "flex",
+      alignItems: "center",
+      padding: "0 8px",
+      cursor: "grab",
+      userSelect: "none",
+      pointerEvents: "none"
+      // 헤더 클릭시 드래그는 캔버스가 처리
+    });
+    const body = document.createElement("div");
+    body.className = "node-body";
+    Object.assign(body.style, {
+      flex: "1",
+      position: "relative",
+      overflow: "hidden",
+      pointerEvents: "auto",
+      // 바디 내부는 인터랙션 가능하게? 아니면 이것도 none하고 자식만 auto?
+      // 일단 바디는 auto로 두면 바디 영역 클릭시 드래그가 안됨.
+      // 그래서 바디도 none으로 하고, 내부 컨텐츠(input 등)만 auto로 하는게 맞음.
+      pointerEvents: "none"
+    });
+    container.appendChild(header);
+    container.appendChild(body);
+    container._domParts = { header, body };
+    return container;
+  }
+  /** 노드용 엘리먼트 생성(한 번만) */
+  _ensureNodeElement(node, def) {
+    var _a;
+    let el = this.nodes.get(node.id);
+    if (!el) {
+      if ((_a = def.html) == null ? void 0 : _a.render) {
+        el = def.html.render(node);
+      } else if (def.html) {
+        el = this._createDefaultNodeLayout(node);
+        if (def.html.init) {
+          def.html.init(node, el, el._domParts);
+        }
+      } else {
+        return null;
+      }
+      if (!el) return null;
+      el.style.position = "absolute";
+      el.style.pointerEvents = "none";
+      this.container.appendChild(el);
+      this.nodes.set(node.id, el);
+    }
+    return el;
+  }
+  /** 그래프와 변환 동기화하여 렌더링 */
+  draw(graph, selection = /* @__PURE__ */ new Set()) {
+    const { scale, offsetX, offsetY } = this.renderer;
+    this.container.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+    this.container.style.transformOrigin = "0 0";
+    const seen = /* @__PURE__ */ new Set();
+    for (const node of graph.nodes.values()) {
+      const def = this.registry.types.get(node.type);
+      const hasHtml = !!(def == null ? void 0 : def.html);
+      if (!hasHtml) continue;
+      const el = this._ensureNodeElement(node, def);
+      if (!el) continue;
+      console.log(node);
+      el.style.left = `${node.computed.x}px`;
+      el.style.top = `${node.computed.y}px`;
+      el.style.width = `${node.computed.w}px`;
+      el.style.height = `${node.computed.h}px`;
+      if (def.html.update) {
+        const parts = el._domParts || {};
+        def.html.update(node, el, {
+          selected: selection.has(node.id),
+          header: parts.header,
+          body: parts.body
+        });
+      }
+      seen.add(node.id);
+    }
+    for (const [id, el] of this.nodes) {
+      if (!seen.has(id)) {
+        el.remove();
+        this.nodes.delete(id);
+      }
+    }
+  }
+  destroy() {
+    for (const [, el] of this.nodes) el.remove();
+    this.nodes.clear();
+    this.container.remove();
+  }
+}
 function createGraphEditor(canvas, { theme, hooks: customHooks, autorun = true } = {}) {
   const hooks = customHooks ?? createHooks([
     // essential hooks
@@ -1073,12 +1461,15 @@ function createGraphEditor(canvas, { theme, hooks: customHooks, autorun = true }
     "runner:tick",
     "runner:start",
     "runner:stop",
-    "node:resize"
+    "node:resize",
+    "group:change",
+    "node:updated"
   ]);
   const registry = new Registry();
   const graph = new Graph({ hooks, registry });
   const renderer = new CanvasRenderer(canvas, { theme, registry });
-  const controller = new Controller({ graph, renderer, hooks });
+  const htmlOverlay = new HtmlOverlay(canvas.parentElement, renderer, registry);
+  const controller = new Controller({ graph, renderer, hooks, htmlOverlay });
   const runner = new Runner({ graph, registry, hooks });
   hooks.on("runner:tick", ({ time, dt }) => {
     renderer.draw(graph, {
@@ -1089,6 +1480,7 @@ function createGraphEditor(canvas, { theme, hooks: customHooks, autorun = true }
       time,
       dt
     });
+    htmlOverlay.draw(graph, controller.selection);
   });
   hooks.on("runner:start", () => {
     renderer.draw(graph, {
@@ -1098,6 +1490,7 @@ function createGraphEditor(canvas, { theme, hooks: customHooks, autorun = true }
       time: performance.now(),
       dt: 0
     });
+    htmlOverlay.draw(graph, controller.selection);
   });
   hooks.on("runner:stop", () => {
     renderer.draw(graph, {
@@ -1107,6 +1500,10 @@ function createGraphEditor(canvas, { theme, hooks: customHooks, autorun = true }
       time: performance.now(),
       dt: 0
     });
+    htmlOverlay.draw(graph, controller.selection);
+  });
+  hooks.on("node:updated", () => {
+    controller.render();
   });
   registry.register("core/Note", {
     title: "Note",
@@ -1129,6 +1526,238 @@ function createGraphEditor(canvas, { theme, hooks: customHooks, autorun = true }
       const { width: w } = node.size;
     }
   });
+  registry.register("core/HtmlNote", {
+    title: "HTML Note",
+    size: { w: 200, h: 150 },
+    inputs: [{ name: "in", datatype: "any" }],
+    outputs: [{ name: "out", datatype: "any" }],
+    // HTML Overlay Configuration
+    html: {
+      // 초기화: 헤더/바디 구성
+      init(node, el, { header, body }) {
+        el.style.backgroundColor = "#222";
+        el.style.borderRadius = "8px";
+        el.style.border = "1px solid #444";
+        el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
+        header.style.backgroundColor = "#333";
+        header.style.borderBottom = "1px solid #444";
+        header.style.color = "#eee";
+        header.style.fontSize = "12px";
+        header.style.fontWeight = "bold";
+        header.textContent = "My HTML Node";
+        body.style.padding = "8px";
+        body.style.color = "#ccc";
+        body.style.fontSize = "12px";
+        const contentDiv = document.createElement("div");
+        contentDiv.textContent = "Content: -- 인션이";
+        body.appendChild(contentDiv);
+        const input = document.createElement("input");
+        Object.assign(input.style, {
+          marginTop: "4px",
+          padding: "4px",
+          background: "#111",
+          border: "1px solid #555",
+          color: "#fff",
+          borderRadius: "4px",
+          pointerEvents: "auto"
+        });
+        input.placeholder = "Type here...";
+        input.addEventListener("input", (e) => {
+          node.state.text = e.target.value;
+        });
+        input.addEventListener("mousedown", (e) => e.stopPropagation());
+        body.appendChild(document.createTextNode("Content:"));
+        body.appendChild(input);
+        el._input = input;
+      },
+      // 매 프레임(또는 필요시) 업데이트
+      update(node, el, { header, body, selected }) {
+        el.style.borderColor = selected ? "#6cf" : "#444";
+        header.style.backgroundColor = selected ? "#3a4a5a" : "#333";
+        if (el._input.value !== (node.state.text || "")) {
+          el._input.value = node.state.text || "";
+        }
+      }
+    },
+    onCreate(node) {
+      node.state.text = "";
+    },
+    onExecute(node, { getInput, setOutput }) {
+      const incoming = getInput("in");
+      setOutput("out", incoming);
+    }
+    // onDraw는 생략 가능 (HTML이 덮으니까)
+    // 하지만 포트 등은 그려야 할 수도 있음. 
+    // 현재 구조상 CanvasRenderer가 기본 노드를 그리므로, 
+    // 투명하게 하거나 겹쳐서 그릴 수 있음.
+  });
+  registry.register("core/TodoNode", {
+    title: "Todo List",
+    size: { w: 240, h: 300 },
+    inputs: [{ name: "in", datatype: "any" }],
+    outputs: [{ name: "out", datatype: "any" }],
+    html: {
+      init(node, el, { header, body }) {
+        el.style.backgroundColor = "#1e1e24";
+        el.style.borderRadius = "8px";
+        el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.5)";
+        el.style.border = "1px solid #333";
+        header.style.backgroundColor = "#2a2a31";
+        header.style.padding = "8px";
+        header.style.fontWeight = "bold";
+        header.style.color = "#e9e9ef";
+        header.textContent = node.title;
+        body.style.display = "flex";
+        body.style.flexDirection = "column";
+        body.style.padding = "8px";
+        body.style.color = "#e9e9ef";
+        const inputRow = document.createElement("div");
+        Object.assign(inputRow.style, { display: "flex", gap: "4px", marginBottom: "8px" });
+        const input = document.createElement("input");
+        Object.assign(input.style, {
+          flex: "1",
+          padding: "6px",
+          borderRadius: "4px",
+          border: "1px solid #444",
+          background: "#141417",
+          color: "#fff",
+          pointerEvents: "auto"
+        });
+        input.placeholder = "Add task...";
+        const addBtn = document.createElement("button");
+        addBtn.textContent = "+";
+        Object.assign(addBtn.style, {
+          padding: "0 12px",
+          cursor: "pointer",
+          background: "#4f5b66",
+          color: "#fff",
+          border: "none",
+          borderRadius: "4px",
+          pointerEvents: "auto"
+        });
+        inputRow.append(input, addBtn);
+        const list = document.createElement("ul");
+        Object.assign(list.style, {
+          listStyle: "none",
+          padding: "0",
+          margin: "0",
+          overflowY: "auto",
+          flex: "1"
+        });
+        body.append(inputRow, list);
+        const addTodo = () => {
+          const text = input.value.trim();
+          if (!text) return;
+          const todos = node.state.todos || [];
+          node.state.todos = [...todos, { id: Date.now(), text, done: false }];
+          input.value = "";
+          hooks.emit("node:updated", node);
+        };
+        addBtn.onclick = addTodo;
+        input.onkeydown = (e) => {
+          if (e.key === "Enter") addTodo();
+          e.stopPropagation();
+        };
+        input.onmousedown = (e) => e.stopPropagation();
+        el._refs = { list };
+      },
+      update(node, el, { selected }) {
+        el.style.borderColor = selected ? "#6cf" : "#333";
+        const { list } = el._refs;
+        const todos = node.state.todos || [];
+        list.innerHTML = "";
+        todos.forEach((todo) => {
+          const li = document.createElement("li");
+          Object.assign(li.style, {
+            display: "flex",
+            alignItems: "center",
+            padding: "6px 0",
+            borderBottom: "1px solid #2a2a31"
+          });
+          const chk = document.createElement("input");
+          chk.type = "checkbox";
+          chk.checked = todo.done;
+          chk.style.marginRight = "8px";
+          chk.style.pointerEvents = "auto";
+          chk.onchange = () => {
+            todo.done = chk.checked;
+            hooks.emit("node:updated", node);
+          };
+          chk.onmousedown = (e) => e.stopPropagation();
+          const span = document.createElement("span");
+          span.textContent = todo.text;
+          span.style.flex = "1";
+          span.style.textDecoration = todo.done ? "line-through" : "none";
+          span.style.color = todo.done ? "#777" : "#eee";
+          const del = document.createElement("button");
+          del.textContent = "×";
+          Object.assign(del.style, {
+            background: "none",
+            border: "none",
+            color: "#f44",
+            cursor: "pointer",
+            fontSize: "16px",
+            pointerEvents: "auto"
+          });
+          del.onclick = () => {
+            node.state.todos = node.state.todos.filter((t) => t.id !== todo.id);
+            hooks.emit("node:updated", node);
+          };
+          del.onmousedown = (e) => e.stopPropagation();
+          li.append(chk, span, del);
+          list.appendChild(li);
+        });
+      }
+    },
+    onCreate(node) {
+      node.state.todos = [
+        { id: 1, text: "Welcome to Free Node", done: false },
+        { id: 2, text: "Try adding a task", done: true }
+      ];
+    }
+  });
+  registry.register("core/Group", {
+    title: "Group",
+    size: { w: 240, h: 160 },
+    onDraw(node, { ctx, theme: theme2 }) {
+      const { x, y, w, h } = node.computed;
+      const headerH = 22;
+      const color = node.state.color || "#39424e";
+      const bgAlpha = 0.5;
+      const textColor = theme2.text || "#e9e9ef";
+      const rgba = (hex, a) => {
+        const c = hex.replace("#", "");
+        const n = parseInt(
+          c.length === 3 ? c.split("").map((x2) => x2 + x2).join("") : c,
+          16
+        );
+        const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
+        return `rgba(${r},${g},${b},${a})`;
+      };
+      const roundRect2 = (ctx2, x2, y2, w2, h2, r) => {
+        if (w2 < 2 * r) r = w2 / 2;
+        if (h2 < 2 * r) r = h2 / 2;
+        ctx2.beginPath();
+        ctx2.moveTo(x2 + r, y2);
+        ctx2.arcTo(x2 + w2, y2, x2 + w2, y2 + h2, r);
+        ctx2.arcTo(x2 + w2, y2 + h2, x2, y2 + h2, r);
+        ctx2.arcTo(x2, y2 + h2, x2, y2, r);
+        ctx2.arcTo(x2, y2, x2 + w2, y2, r);
+        ctx2.closePath();
+      };
+      ctx.fillStyle = rgba(color, bgAlpha);
+      roundRect2(ctx, x, y, w, h, 10);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, headerH + 6, [10, 10, 0, 0]);
+      ctx.fill();
+      ctx.fillStyle = textColor;
+      ctx.font = "12px system-ui";
+      ctx.textBaseline = "middle";
+      ctx.fillText(node.title, x + 10, y + headerH / 2);
+    }
+  });
   renderer.resize(canvas.clientWidth, canvas.clientHeight);
   controller.render();
   const ro = new ResizeObserver(() => {
@@ -1137,22 +1766,20 @@ function createGraphEditor(canvas, { theme, hooks: customHooks, autorun = true }
   });
   ro.observe(canvas);
   const api = {
+    addGroup: (args = {}) => {
+      controller.graph.groupManager.addGroup(args);
+      controller.render();
+    },
     graph,
     renderer,
-    controller,
-    hooks,
-    registry,
-    runner,
-    addNode: (...args) => graph.addNode(...args),
-    toJSON: () => graph.toJSON(),
-    fromJSON: (data) => Graph.fromJSON(data, { hooks, registry }),
-    resize: (w, h) => renderer.resize(w, h),
     render: () => controller.render(),
     start: () => runner.start(),
     stop: () => runner.stop(),
     destroy: () => {
       runner.stop();
       ro.disconnect();
+      controller.destructor();
+      htmlOverlay.destroy();
     }
   };
   if (autorun) runner.start();

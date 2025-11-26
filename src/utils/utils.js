@@ -34,7 +34,7 @@ export function randomUUID() {
   // 4) Node.js 전용 대체 (require가 있을 때)
   try {
     // 번들러/ESM 충돌 피하려고 런타임에만 require 접근
-    // eslint-disable-next-line no-new-func
+     
     const req = Function('return typeof require === "function" ? require : null')();
     if (req) {
       const nodeCrypto = req("crypto");

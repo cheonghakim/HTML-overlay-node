@@ -1,0 +1,14 @@
+# Ignore build outputs
+dist/
+build/
+coverage/
+
+# Ignore dependencies
+node_modules/
+
+# Ignore package files
+package.json
+package-lock.json
+
+# Ignore config files
+.eslintrc.json

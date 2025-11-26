@@ -137,7 +137,7 @@ export function createGraphEditor(
         body.style.fontSize = "12px";
 
         const contentDiv = document.createElement("div");
-        contentDiv.textContent = "Content: -- 인션이";
+        contentDiv.textContent = "Event Name";
         body.appendChild(contentDiv);
         
         // Add some interactive content
@@ -156,8 +156,7 @@ export function createGraphEditor(
           node.state.text = e.target.value;
         });
         input.addEventListener("mousedown", (e) => e.stopPropagation()); // 캔버스 드래그 방지
-        
-        body.appendChild(document.createTextNode("Content:"));
+
         body.appendChild(input);
         
         // Store input ref for updates
@@ -407,6 +406,8 @@ export function createGraphEditor(
     destroy: () => {
       runner.stop();
       ro.disconnect();
+      controller.destructor();
+      htmlOverlay.destroy();
     },
   };
 

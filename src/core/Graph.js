@@ -2,8 +2,20 @@ import { Node } from "./Node.js";
 import { Edge } from "./Edge.js";
 import { GroupManager } from "../groups/GroupManager.js";
 
+/**
+ * Graph manages the collection of nodes and edges
+ */
 export class Graph {
+  /**
+   * Create a new Graph
+   * @param {Object} options - Graph configuration
+   * @param {Object} options.hooks - Event hooks system
+   * @param {Object} options.registry - Node type registry
+   */
   constructor({ hooks, registry }) {
+    if (!registry) {
+      throw new Error("Graph requires a registry");
+    }
     this.nodes = new Map();
     this.edges = new Map();
     this.hooks = hooks;
@@ -18,18 +30,27 @@ export class Graph {
       hooks: this.hooks,
     });
   }
+  /**
+   * Get a node by its ID
+   * @param {string} id - Node ID
+   * @returns {Node|null} The node or null if not found
+   */
   getNodeById(id) {
-    for (let [_id, node] of this.nodes.entries()) {
-      if (id === _id) {
-        return node;
-      }
-    }
-
-    return null;
+    return this.nodes.get(id) || null;
   }
+  /**
+   * Add a node to the graph
+   * @param {string} type - Node type identifier
+   * @param {Object} [opts={}] - Additional node options (x, y, width, height, etc.)
+   * @returns {Node} The created node
+   * @throws {Error} If node type is not registered
+   */
   addNode(type, opts = {}) {
     const def = this.registry.types.get(type);
-    if (!def) throw new Error(`Unknown node type: ${type}`);
+    if (!def) {
+      const available = Array.from(this.registry.types.keys()).join(", ") || "none";
+      throw new Error(`Unknown node type: "${type}". Available types: ${available}`);
+    }
     const node = new Node({
       type,
       title: def.title,
@@ -44,23 +65,49 @@ export class Graph {
     this.hooks?.emit("node:create", node);
     return node;
   }
+  /**
+   * Remove a node and its connected edges from the graph
+   * @param {string} nodeId - ID of the node to remove
+   */
   removeNode(nodeId) {
-    for (const [eid, e] of this.edges)
-      if (e.fromNode === nodeId || e.toNode === nodeId) this.edges.delete(eid);
+    // Remove all edges connected to this node
+    for (const [eid, e] of this.edges) {
+      if (e.fromNode === nodeId || e.toNode === nodeId) {
+        this.edges.delete(eid);
+      }
+    }
     this.nodes.delete(nodeId);
   }
+  /**
+   * Add an edge connecting two node ports
+   * @param {string} fromNode - Source node ID
+   * @param {string} fromPort - Source port ID
+   * @param {string} toNode - Target node ID
+   * @param {string} toPort - Target port ID
+   * @returns {Edge} The created edge
+   * @throws {Error} If nodes don't exist
+   */
   addEdge(fromNode, fromPort, toNode, toPort) {
+    // Validate nodes exist
+    if (!this.nodes.has(fromNode)) {
+      throw new Error(`Cannot create edge: source node "${fromNode}" not found`);
+    }
+    if (!this.nodes.has(toNode)) {
+      throw new Error(`Cannot create edge: target node "${toNode}" not found`);
+    }
+
     const e = new Edge({ fromNode, fromPort, toNode, toPort });
     this.edges.set(e.id, e);
     this.hooks?.emit("edge:create", e);
     return e;
   }
 
+  /**
+   * Clear all nodes and edges from the graph
+   */
   clear() {
-    this.nodes?.clear();
-    this.edges?.clear();
-    this.nodes = new Map();
-    this.edges = new Map();
+    this.nodes.clear();
+    this.edges.clear();
   }
 
   updateWorldTransforms() {

@@ -1,8 +1,26 @@
 import { randomUUID } from "../utils/utils.js";
 
 // src/core/Node.js
+
+/**
+ * Node represents a single node in the graph
+ */
 export class Node {
+  /**
+   * Create a new Node
+   * @param {Object} options - Node configuration
+   * @param {string} [options.id] - Unique identifier (auto-generated if not provided)
+   * @param {string} options.type - Node type identifier
+   * @param {string} [options.title] - Display title (defaults to type)
+   * @param {number} [options.x=0] - X position
+   * @param {number} [options.y=0] - Y position
+   * @param {number} [options.width=160] - Node width
+   * @param {number} [options.height=60] - Node height
+   */
   constructor({ id, type, title, x = 0, y = 0, width = 160, height = 60 }) {
+    if (!type) {
+      throw new Error("Node type is required");
+    }
     this.id = id ?? randomUUID();
     this.type = type;
     this.title = title ?? type;
@@ -10,19 +28,39 @@ export class Node {
     this.size = { width, height };
     this.inputs = []; // {id,name,datatype}
     this.outputs = []; // {id,name,datatype}
-    this.state = {}; // 사용자 상태
+    this.state = {}; // User state data
 
     // Tree Structure
     this.parent = null; // Parent Node (or null if root)
     this.children = new Set(); // Set<Node>
     this.computed = { x: 0, y: 0, w: 0, h: 0 }; // World Transform
   }
+
+  /**
+   * Add an input port to this node
+   * @param {string} name - Port name
+   * @param {string} [datatype="any"] - Data type for the port
+   * @returns {Object} The created port
+   */
   addInput(name, datatype = "any") {
+    if (!name || typeof name !== "string") {
+      throw new Error("Input port name must be a non-empty string");
+    }
     const port = { id: randomUUID(), name, datatype, dir: "in" };
     this.inputs.push(port);
     return port;
   }
+
+  /**
+   * Add an output port to this node
+   * @param {string} name - Port name
+   * @param {string} [datatype="any"] - Data type for the port
+   * @returns {Object} The created port
+   */
   addOutput(name, datatype = "any") {
+    if (!name || typeof name !== "string") {
+      throw new Error("Output port name must be a non-empty string");
+    }
     const port = { id: randomUUID(), name, datatype, dir: "out" };
     this.outputs.push(port);
     return port;

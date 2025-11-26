@@ -40,6 +40,7 @@
       <header>
         <button id="addGrp">Add Group</button>
         <button id="add">Add Node</button>
+        <button id="addOverlay">Add Overlay Node</button>
         <button id="save">Save</button>
         <button id="load">Load</button>
         <button id="start">Start</button>
@@ -60,7 +61,10 @@
           x: 100 + Math.random() * 200,
           y: 100 + Math.random() * 100,
         });
+        editor.render();
+      };
 
+      document.getElementById("addOverlay").onclick = () => {
         editor.graph.addNode("core/HtmlNote", { x: 100, y: 100 })
         editor.render();
       };
