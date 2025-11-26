@@ -1,0 +1,57 @@
+# Third-Party Licenses
+
+This project uses the following dependencies for development and build purposes:
+
+## Build Tool
+- **Vite** (^6.3.5) - MIT License
+  - Fast build tool and development server
+  - https://github.com/vitejs/vite
+
+## Development Dependencies
+
+### Testing
+- **Vitest** (^2.1.8) - MIT License
+  - Unit testing framework
+  - https://github.com/vitest-dev/vitest
+
+- **@vitest/coverage-v8** (^2.1.8) - MIT License
+  - Code coverage tool for Vitest
+
+- **jsdom** (^27.2.0) - MIT License
+  - JavaScript implementation of web standards for testing
+
+### Code Quality
+- **ESLint** (^9.17.0) - MIT License
+  - JavaScript linting utility
+  - https://github.com/eslint/eslint
+
+- **@eslint/js** (^9.39.1) - MIT License
+  - ESLint JavaScript configuration
+
+- **Prettier** (^3.4.2) - MIT License
+  - Code formatter
+  - https://github.com/prettier/prettier
+
+### Build Optimization
+- **Terser** (^5.43.1) - BSD-2-Clause License
+  - JavaScript minifier
+  - https://github.com/terser/terser
+
+---
+
+## License Note
+
+**Free Node** itself is licensed under the ISC License (see [LICENSE](LICENSE)).
+
+The dependencies listed above are used during development and build processes. The final distributed package (`dist/`) contains only the compiled Free Node code and does not include these dependencies.
+
+For the most up-to-date list of dependencies and their licenses, please refer to `package.json` and run:
+```bash
+npm list --depth=0
+```
+
+---
+
+## Acknowledgments
+
+We thank all the authors and contributors of the above projects for their excellent work.
