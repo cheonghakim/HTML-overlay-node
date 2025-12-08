@@ -1,10 +1,10 @@
-# Free Node
+# HTML-overlay-Node
 
-[![CI](https://github.com/cheonghakim/free-node/workflows/CI/badge.svg)](https://github.com/cheonghakim/free-node/actions)
-[![npm version](https://img.shields.io/npm/v/free-node.svg)](https://www.npmjs.com/package/free-node)
+[![CI](https://github.com/cheonghakim/HTML-overlay-node/workflows/CI/badge.svg)](https://github.com/cheonghakim/HTML-overlay-node/actions)
+[![npm version](https://img.shields.io/npm/v/HTML-overlay-node.svg)](https://www.npmjs.com/package/HTML-overlay-node)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
-**Free Node** is a customizable, LiteGraph-style node editor library for building visual programming interfaces. It uses **Canvas rendering** for fast performance and supports node type registration, execution cycle control, custom drawing, HTML overlays, and group management.
+**HTML-overlay-Node** is a customizable, LiteGraph-style node editor library for building visual programming interfaces. It uses **Canvas rendering** for fast performance and supports node type registration, execution cycle control, custom drawing, HTML overlays, and group management.
 
 ---
 
@@ -22,27 +22,10 @@
 - 🪝 **Event hooks** - Subscribe to graph events for extensibility
 
 ---
-
-## 📦 Installation
-
-```bash
-npm install free-node
-```
-
-Or using a CDN:
-
-```html
-<script type="module">
-  import { createGraphEditor } from "https://unpkg.com/free-node/dist/free-node.es.js";
-</script>
-```
-
----
-
 ## 🚀 Quick Start
 
 ```javascript
-import { createGraphEditor } from "free-node";
+import { createGraphEditor } from "HTML-overlay-node";
 
 const canvas = document.getElementById("myCanvas");
 const editor = createGraphEditor(canvas, { autorun: true });
@@ -87,7 +70,7 @@ start();
 
 ## 📦 Group Management
 
-Free Node supports organizing nodes into hierarchical groups for better organization.
+HTML-overlay-Node supports organizing nodes into hierarchical groups for better organization.
 
 ### Creating Groups
 
