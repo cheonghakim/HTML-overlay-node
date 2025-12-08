@@ -5,6 +5,7 @@ export class GroupManager {
   constructor({ graph, hooks }) {
     this.graph = graph;
     this.hooks = hooks;
+    this._groups = [];
   }
 
   // ---------- CRUD ----------
@@ -46,7 +47,8 @@ export class GroupManager {
         console.warn(`Member node ${memberId} not found, skipping`);
       }
     }
-    
+
+    this._groups.push(groupNode);
     this.hooks?.emit("group:change");
     return groupNode;
   }
@@ -56,7 +58,7 @@ export class GroupManager {
     // 여기서는 간단히 graph.nodes를 순회하며 selected 상태를 확인한다고 가정하거나
     // 외부에서 members를 넘겨받는 것이 좋음.
     // 일단은 외부에서 members를 넘겨받는 addGroup을 활용.
-    return null; 
+    return null;
   }
 
   removeGroup(id) {
@@ -80,12 +82,12 @@ export class GroupManager {
   resizeGroup(id, dw, dh) {
     const g = this.graph.getNodeById(id);
     if (!g || g.type !== "core/Group") return;
-    
+
     const minW = 100;
     const minH = 60;
     g.size.width = Math.max(minW, g.size.width + dw);
     g.size.height = Math.max(minH, g.size.height + dh);
-    
+
     this.graph.updateWorldTransforms();
     this.hooks?.emit("group:change");
   }
@@ -98,19 +100,14 @@ export class GroupManager {
     const handleSize = 10;
     // 역순 순회 (위에 있는 것부터)
     const nodes = [...this.graph.nodes.values()].reverse();
-    
+
     for (const node of nodes) {
       if (node.type !== "core/Group") continue;
-      
+
       // World Transform 사용
       const { x: gx, y: gy, w: gw, h: gh } = node.computed;
-      
-      if (
-        x >= gx + gw - handleSize &&
-        x <= gx + gw &&
-        y >= gy + gh - handleSize &&
-        y <= gy + gh
-      ) {
+
+      if (x >= gx + gw - handleSize && x <= gx + gw && y >= gy + gh - handleSize && y <= gy + gh) {
         return { group: node, handle: "se" };
       }
     }
