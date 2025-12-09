@@ -46,7 +46,6 @@
       <header>
         <button id="addGrp">Add Group</button>
         <button id="add">Add Node</button>
-        <button id="addOverlay">Add Overlay Node</button>
         <button id="save">Save</button>
         <button id="load">Load</button>
         <button id="start">Start</button>
@@ -70,11 +69,6 @@
         editor.render();
       };
 
-      document.getElementById("addOverlay").onclick = () => {
-        editor.graph.addNode("core/HtmlNote", { x: 100, y: 100 })
-        editor.render();
-      };
-
       document.getElementById("addGrp").onclick = () => {
         editor.addGroup();
         editor.render();
@@ -82,7 +76,6 @@
 
       document.getElementById("save").onclick = () => {
         let saved = editor.graph.toJSON();
-        console.log(saved);
         const mime = "application/json";
         const blob = new Blob([JSON.stringify(saved)], {
           type: mime,

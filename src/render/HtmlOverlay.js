@@ -26,6 +26,7 @@ export class HtmlOverlay {
   /** 기본 노드 레이아웃 생성 (헤더 + 바디) */
   _createDefaultNodeLayout(node) {
     const container = document.createElement("div");
+    container.className = "node-overlay";
     Object.assign(container.style, {
       position: "absolute",
       display: "flex",
@@ -57,7 +58,7 @@ export class HtmlOverlay {
       pointerEvents: "auto", // 바디 내부는 인터랙션 가능하게? 아니면 이것도 none하고 자식만 auto?
       // 일단 바디는 auto로 두면 바디 영역 클릭시 드래그가 안됨.
       // 그래서 바디도 none으로 하고, 내부 컨텐츠(input 등)만 auto로 하는게 맞음.
-      pointerEvents: "none", 
+      pointerEvents: "none",
     });
 
     container.appendChild(header);
@@ -75,7 +76,7 @@ export class HtmlOverlay {
       // 1) 사용자 정의 render 함수가 있으면 우선 사용
       if (def.html?.render) {
         el = def.html.render(node);
-      } 
+      }
       // 2) 아니면 기본 레이아웃 사용 (html 설정이 있는 경우)
       else if (def.html) {
         el = this._createDefaultNodeLayout(node);
@@ -88,7 +89,7 @@ export class HtmlOverlay {
       }
 
       if (!el) return null;
-      
+
       el.style.position = "absolute";
       el.style.pointerEvents = "none"; // 기본적으로 캔버스 통과
       this.container.appendChild(el);
@@ -108,7 +109,7 @@ export class HtmlOverlay {
 
     for (const node of graph.nodes.values()) {
       const def = this.registry.types.get(node.type);
-      
+
       // render 함수가 있거나, html 설정 객체가 있으면 처리
       const hasHtml = !!(def?.html);
       if (!hasHtml) continue;
@@ -117,7 +118,6 @@ export class HtmlOverlay {
       if (!el) continue;
 
       // 노드 위치/크기 동기화 (월드 좌표 → 컨테이너 내부는 이미 scale/translate 적용)
-      console.log(node)
       el.style.left = `${node.computed.x}px`;
       el.style.top = `${node.computed.y}px`;
       el.style.width = `${node.computed.w}px`;
@@ -127,7 +127,7 @@ export class HtmlOverlay {
       if (def.html.update) {
         // 기본 레이아웃이면 header/body도 함께 전달
         const parts = el._domParts || {};
-        def.html.update(node, el, { 
+        def.html.update(node, el, {
           selected: selection.has(node.id),
           header: parts.header,
           body: parts.body

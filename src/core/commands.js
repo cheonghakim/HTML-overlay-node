@@ -75,9 +75,8 @@ export function RemoveNodeCmd(graph, node) {
       removedNode = node;
       removedEdges = graph.edges
         ? [...graph.edges.values()].filter((e) => {
-            console.log(e);
-            return e.fromNode === node.id || e.toNode === node.id;
-          })
+          return e.fromNode === node.id || e.toNode === node.id;
+        })
         : [];
 
       // Remove edges first
@@ -110,6 +109,17 @@ export function ResizeNodeCmd(node, fromSize, toSize) {
     undo() {
       node.size.width = fromSize.w;
       node.size.height = fromSize.h;
+    },
+  };
+}
+
+export function ChangeGroupColorCmd(node, fromColor, toColor) {
+  return {
+    do() {
+      node.state.color = toColor;
+    },
+    undo() {
+      node.state.color = fromColor;
     },
   };
 }

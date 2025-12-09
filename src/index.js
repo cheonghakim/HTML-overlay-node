@@ -3,9 +3,13 @@ import { createHooks } from "./core/Hooks.js";
 import { Graph } from "./core/Graph.js";
 import { CanvasRenderer } from "./render/CanvasRenderer.js";
 import { Controller } from "./interact/Controller.js";
+import { ContextMenu } from "./interact/ContextMenu.js";
 import { Runner } from "./core/Runner.js";
 
 import { HtmlOverlay } from "./render/HtmlOverlay.js";
+import { RemoveNodeCmd, ChangeGroupColorCmd } from "./core/commands.js";
+
+
 
 export function createGraphEditor(
   canvas,
@@ -17,6 +21,8 @@ export function createGraphEditor(
       // essential hooks
       "node:create",
       "node:move",
+      "node:click",
+      "node:dblclick",
       "edge:create",
       "edge:delete",
       "graph:serialize",
@@ -35,6 +41,18 @@ export function createGraphEditor(
   const htmlOverlay = new HtmlOverlay(canvas.parentElement, renderer, registry);
 
   const controller = new Controller({ graph, renderer, hooks, htmlOverlay });
+
+  // Create context menu after controller (needs commandStack)
+  const contextMenu = new ContextMenu({
+    graph,
+    hooks,
+    renderer,
+    commandStack: controller.stack,
+  });
+
+  // Connect context menu to controller
+  controller.contextMenu = contextMenu;
+
   const runner = new Runner({ graph, registry, hooks });
 
   hooks.on("runner:tick", ({ time, dt }) => {
@@ -113,7 +131,7 @@ export function createGraphEditor(
     size: { w: 200, h: 150 },
     inputs: [{ name: "in", datatype: "any" }],
     outputs: [{ name: "out", datatype: "any" }],
-    
+
     // HTML Overlay Configuration
     html: {
       // 초기화: 헤더/바디 구성
@@ -139,7 +157,7 @@ export function createGraphEditor(
         const contentDiv = document.createElement("div");
         contentDiv.textContent = "Event Name";
         body.appendChild(contentDiv);
-        
+
         // Add some interactive content
         const input = document.createElement("input");
         Object.assign(input.style, {
@@ -158,16 +176,16 @@ export function createGraphEditor(
         input.addEventListener("mousedown", (e) => e.stopPropagation()); // 캔버스 드래그 방지
 
         body.appendChild(input);
-        
+
         // Store input ref for updates
         el._input = input;
       },
-      
+
       // 매 프레임(또는 필요시) 업데이트
       update(node, el, { header, body, selected }) {
         el.style.borderColor = selected ? "#6cf" : "#444";
         header.style.backgroundColor = selected ? "#3a4a5a" : "#333";
-        
+
         // 상태 동기화 (외부에서 변경되었을 경우)
         if (el._input.value !== (node.state.text || "")) {
           el._input.value = node.state.text || "";
@@ -215,19 +233,19 @@ export function createGraphEditor(
         // Input Area
         const inputRow = document.createElement("div");
         Object.assign(inputRow.style, { display: "flex", gap: "4px", marginBottom: "8px" });
-        
+
         const input = document.createElement("input");
         Object.assign(input.style, {
-          flex: "1", padding: "6px", borderRadius: "4px", 
+          flex: "1", padding: "6px", borderRadius: "4px",
           border: "1px solid #444", background: "#141417", color: "#fff",
           pointerEvents: "auto",
         });
         input.placeholder = "Add task...";
-        
+
         const addBtn = document.createElement("button");
         addBtn.textContent = "+";
         Object.assign(addBtn.style, {
-          padding: "0 12px", cursor: "pointer", background: "#4f5b66", 
+          padding: "0 12px", cursor: "pointer", background: "#4f5b66",
           color: "#fff", border: "none", borderRadius: "4px",
           pointerEvents: "auto",
         });
@@ -237,8 +255,8 @@ export function createGraphEditor(
         // List Area
         const list = document.createElement("ul");
         Object.assign(list.style, {
-          listStyle: "none", padding: "0", margin: "0", 
-          overflowY: "auto", flex: "1"
+          listStyle: "none", padding: "0", margin: "0",
+          overflow: "hidden", flex: "1"
         });
 
         body.append(inputRow, list);
@@ -264,7 +282,7 @@ export function createGraphEditor(
       },
       update(node, el, { selected }) {
         el.style.borderColor = selected ? "#6cf" : "#333";
-        
+
         const { list } = el._refs;
         const todos = node.state.todos || [];
 
@@ -273,7 +291,7 @@ export function createGraphEditor(
         todos.forEach((todo) => {
           const li = document.createElement("li");
           Object.assign(li.style, {
-            display: "flex", alignItems: "center", padding: "6px 0", 
+            display: "flex", alignItems: "center", padding: "6px 0",
             borderBottom: "1px solid #2a2a31"
           });
 
@@ -282,7 +300,7 @@ export function createGraphEditor(
           chk.checked = todo.done;
           chk.style.marginRight = "8px";
           chk.style.pointerEvents = "auto";
-          chk.onchange = () => { 
+          chk.onchange = () => {
             todo.done = chk.checked;
             hooks.emit("node:updated", node);
           };
@@ -297,7 +315,7 @@ export function createGraphEditor(
           const del = document.createElement("button");
           del.textContent = "×";
           Object.assign(del.style, {
-            background: "none", border: "none", color: "#f44", 
+            background: "none", border: "none", color: "#f44",
             cursor: "pointer", fontSize: "16px",
             pointerEvents: "auto",
           });
@@ -337,9 +355,9 @@ export function createGraphEditor(
         const n = parseInt(
           c.length === 3
             ? c
-                .split("")
-                .map((x) => x + x)
-                .join("")
+              .split("")
+              .map((x) => x + x)
+              .join("")
             : c,
           16
         );
@@ -381,9 +399,92 @@ export function createGraphEditor(
     },
   });
 
+  /**
+* Setup default context menu items
+* This function can be customized or replaced by users
+*/
+  function setupDefaultContextMenu(contextMenu, { controller, graph, hooks }) {
+    // Add Node submenu (canvas background only)
+    const nodeTypes = [];
+    for (const [key, typeDef] of graph.registry.types.entries()) {
+      nodeTypes.push({
+        id: `add-${key}`,
+        label: typeDef.title || key,
+        action: () => {
+          // Get world position from context menu
+          const worldPos = contextMenu.worldPosition || { x: 100, y: 100 };
+
+          // Add node at click position
+          const node = graph.addNode(key, {
+            x: worldPos.x,
+            y: worldPos.y,
+          });
+
+          hooks?.emit("node:updated", node);
+        },
+      });
+    }
+
+    contextMenu.addItem("add-node", "Add Node", {
+      condition: (target) => !target,
+      submenu: nodeTypes,
+      order: 5,
+    });
+
+    // Delete Node (for all nodes except groups)
+    contextMenu.addItem("delete-node", "Delete Node", {
+      condition: (target) => target && target.type !== "core/Group",
+      action: (target) => {
+        const cmd = RemoveNodeCmd(graph, target);
+        controller.stack.exec(cmd);
+        hooks?.emit("node:updated", target);
+      },
+      order: 10,
+    });
+
+    // Change Group Color (for groups only) - with submenu
+    const colors = [
+      { name: "Default", color: "#39424e" },
+      { name: "Slate", color: "#4a5568" },
+      { name: "Gray", color: "#2d3748" },
+      { name: "Blue", color: "#1a365d" },
+      { name: "Green", color: "#22543d" },
+      { name: "Red", color: "#742a2a" },
+      { name: "Purple", color: "#44337a" },
+    ];
+
+    contextMenu.addItem("change-group-color", "Change Color", {
+      condition: (target) => target && target.type === "core/Group",
+      submenu: colors.map((colorInfo) => ({
+        id: `color-${colorInfo.color}`,
+        label: colorInfo.name,
+        color: colorInfo.color,
+        action: (target) => {
+          const currentColor = target.state.color || "#39424e";
+          const cmd = ChangeGroupColorCmd(target, currentColor, colorInfo.color);
+          controller.stack.exec(cmd);
+          hooks?.emit("node:updated", target);
+        },
+      })),
+      order: 20,
+    });
+    contextMenu.addItem("delete-group", "Delete Group", {
+      condition: (target) => target && target.type === "core/Group",
+      action: (target) => {
+        const cmd = RemoveNodeCmd(graph, target);
+        controller.stack.exec(cmd);
+        hooks?.emit("node:updated", target);
+      },
+      order: 20,
+    });
+  }
+
+
+  // Setup default context menu items
+  // Users can easily override, remove, or add items here
+  setupDefaultContextMenu(contextMenu, { controller, graph, hooks });
 
   // initial render & resize
-
   renderer.resize(canvas.clientWidth, canvas.clientHeight);
   controller.render();
 
@@ -400,14 +501,16 @@ export function createGraphEditor(
     },
     graph,
     renderer,
+    contextMenu,
     render: () => controller.render(),
     start: () => runner.start(),
     stop: () => runner.stop(),
     destroy: () => {
       runner.stop();
       ro.disconnect();
-      controller.destructor();
+      controller.destroy();
       htmlOverlay.destroy();
+      contextMenu.destroy();
     },
   };
 

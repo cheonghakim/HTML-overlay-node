@@ -2,6 +2,7 @@ import { hitTestNode, portRect } from "./hitTest.js";
 
 export class CanvasRenderer {
   static FONT_SIZE = 12;
+  static SELECTED_NODE_COLOR = "#6cf";
   constructor(canvas, { theme = {}, registry, edgeStyle = "orthogonal" } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
@@ -298,15 +299,36 @@ export class CanvasRenderer {
     const { ctx, theme } = this;
     const r = 8;
     const { x, y, w, h } = node.computed;
+    
+    // Draw main body
     ctx.fillStyle = theme.node;
-    ctx.strokeStyle = selected ? "#6cf" : "#333";
+    ctx.strokeStyle = selected ? CanvasRenderer.SELECTED_NODE_COLOR : "#333";
     ctx.lineWidth = (selected ? 2 : 1.2) / this.scale;
     roundRect(ctx, x, y, w, h, r);
     ctx.fill();
     ctx.stroke();
+    
+    // Draw header (fill only, no bottom border)
     ctx.fillStyle = theme.title;
     roundRect(ctx, x, y, w, 24, { tl: r, tr: r, br: 0, bl: 0 });
     ctx.fill();
+    
+    // Manually stroke only top and sides of header (not bottom)
+    ctx.strokeStyle = selected ? CanvasRenderer.SELECTED_NODE_COLOR : "#333";
+    ctx.lineWidth = (selected ? 2 : 1.2) / this.scale;
+    ctx.beginPath();
+    // Top-left corner to top-right corner
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    // Right side down to header bottom
+    ctx.lineTo(x + w, y + 24);
+    // Move to left side header bottom
+    ctx.moveTo(x, y + 24);
+    // Left side up to top-left corner
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.stroke();
 
     this._drawScreenText(node.title, x + 8, y + CanvasRenderer.FONT_SIZE, {
       fontPx: CanvasRenderer.FONT_SIZE,

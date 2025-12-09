@@ -14,11 +14,12 @@ export class Controller {
   static MIN_NODE_WIDTH = 80;
   static MIN_NODE_HEIGHT = 60;
 
-  constructor({ graph, renderer, hooks, htmlOverlay }) {
+  constructor({ graph, renderer, hooks, htmlOverlay, contextMenu }) {
     this.graph = graph;
     this.renderer = renderer;
     this.hooks = hooks;
     this.htmlOverlay = htmlOverlay;
+    this.contextMenu = contextMenu;
 
     this.stack = new CommandStack();
     this.selection = new Set();
@@ -36,14 +37,16 @@ export class Controller {
     this._onWheelEvt = this._onWheel.bind(this);
     this._onMoveEvt = this._onMove.bind(this);
     this._onUpEvt = this._onUp.bind(this);
+    this._onContextMenuEvt = this._onContextMenu.bind(this);
 
     this._bindEvents();
   }
 
-  destructor() {
+  destroy() {
     const c = this.renderer.canvas;
     c.removeEventListener("mousedown", this._onDownEvt);
     c.removeEventListener("wheel", this._onWheelEvt, { passive: false });
+    c.removeEventListener("contextmenu", this._onContextMenuEvt);
     window.removeEventListener("mousemove", this._onMoveEvt);
     window.removeEventListener("mouseup", this._onUpEvt);
     window.removeEventListener("keydown", this._onKeyPressEvt);
@@ -53,12 +56,17 @@ export class Controller {
     const c = this.renderer.canvas;
     c.addEventListener("mousedown", this._onDownEvt);
     c.addEventListener("wheel", this._onWheelEvt, { passive: false });
+    c.addEventListener("contextmenu", this._onContextMenuEvt);
     window.addEventListener("mousemove", this._onMoveEvt);
     window.addEventListener("mouseup", this._onUpEvt);
     window.addEventListener("keydown", this._onKeyPressEvt);
   }
 
   _onKeyPress(e) {
+    this.isAlt = e.altKey;
+    this.isShift = e.shiftKey;
+    this.isCtrl = e.ctrlKey;
+
     // Undo: Ctrl/Cmd + Z  (Shift+Z → Redo)
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -151,6 +159,19 @@ export class Controller {
     this.render();
   }
 
+  _onContextMenu(e) {
+    e.preventDefault();
+
+    // Only show context menu if we have a contextMenu instance
+    if (!this.contextMenu) return;
+
+    const w = this._posWorld(e);
+    const node = this._findNodeAtWorld(w.x, w.y);
+
+    // Show menu with node or null (for canvas background) and world position
+    this.contextMenu.show(node, e.clientX, e.clientY, w);
+  }
+
   _resizeHandleRect(node) {
     const s = 10;
     const { x, y, w, h } = node.computed;
@@ -211,7 +232,7 @@ export class Controller {
     if (e.button === 0 && node) {
       if (!e.shiftKey) this.selection.clear();
       this.selection.add(node.id);
-      
+
       // Dragging: store initial world pos difference
       // When moving, we calculate new world pos, then convert to local
       this.dragging = {
@@ -220,6 +241,21 @@ export class Controller {
         offsetY: w.y - node.computed.y,
         startPos: { ...node.pos }, // for undo
       };
+
+      // If dragging a group, store children's world positions
+      if (node.type === "core/Group") {
+        this.dragging.childrenWorldPos = [];
+        for (const child of this.graph.nodes.values()) {
+          if (child.parent === node) {
+            this.dragging.childrenWorldPos.push({
+              node: child,
+              worldX: child.computed.x,
+              worldY: child.computed.y,
+            });
+          }
+        }
+      }
+
       this.render();
       return;
     }
@@ -234,6 +270,11 @@ export class Controller {
   }
 
   _onMove(e) {
+    // Track key states
+    this.isAlt = e.altKey;
+    this.isShift = e.shiftKey;
+    this.isCtrl = e.ctrlKey;
+
     const s = this._posScreen(e);
     const w = this.renderer.screenToWorld(s.x, s.y);
 
@@ -264,10 +305,13 @@ export class Controller {
 
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
-      
+
       // Target World Pos
       const targetWx = w.x - this.dragging.offsetX;
-      const targetWy = w.y - this.dragging.offsetY;
+      const targetWy = this.isShift ? w.y - 0 : w.y - this.dragging.offsetY;
+
+      // Update world transforms to get current parent position
+      this.graph.updateWorldTransforms();
 
       // Convert to Local Pos
       // local = targetWorld - parentWorld
@@ -281,6 +325,18 @@ export class Controller {
       n.pos.x = targetWx - parentWx;
       n.pos.y = targetWy - parentWy;
 
+      // If Alt is held and dragging a group, restore children to original world positions
+      if (this.isAlt && n.type === "core/Group" && this.dragging.childrenWorldPos) {
+        this.graph.updateWorldTransforms();
+        for (const childInfo of this.dragging.childrenWorldPos) {
+          const child = childInfo.node;
+          const newGroupX = n.computed.x;
+          const newGroupY = n.computed.y;
+
+          child.pos.x = childInfo.worldX - newGroupX;
+          child.pos.y = childInfo.worldY - newGroupY;
+        }
+      }
 
       this.hooks?.emit("node:move", n);
       this.render();
@@ -303,6 +359,10 @@ export class Controller {
   }
 
   _onUp(e) {
+    this.isAlt = e.altKey;
+    this.isShift = e.shiftKey;
+    this.isCtrl = e.ctrlKey;
+
     const w = this._posWorld(e);
 
     if (this.panning) {
@@ -315,7 +375,7 @@ export class Controller {
       const from = this.connecting;
       const portIn = this._findPortAtWorld(w.x, w.y);
       if (portIn && portIn.dir === "in") {
-         this.stack.exec(
+        this.stack.exec(
           AddEdgeCmd(
             this.graph,
             from.fromNode,
@@ -342,15 +402,28 @@ export class Controller {
 
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
-      
-      // If we're dragging a GROUP, check for nodes to auto-parent
-      if (n.type === "core/Group") {
+
+      // If we're dragging a GROUP with Alt, only move the group (keep children in place)
+      if (n.type === "core/Group" && this.isAlt && this.dragging.childrenWorldPos) {
+        // Restore children to their original world positions
+        for (const childInfo of this.dragging.childrenWorldPos) {
+          const child = childInfo.node;
+          // Convert world position back to local position relative to new group position
+          this.graph.updateWorldTransforms();
+          const newGroupX = n.computed.x;
+          const newGroupY = n.computed.y;
+
+          child.pos.x = childInfo.worldX - newGroupX;
+          child.pos.y = childInfo.worldY - newGroupY;
+        }
+      } else if (n.type === "core/Group" && !this.isAlt) {
+        // Normal group drag - auto-parent nodes
         this._autoParentNodesInGroup(n);
-      } else {
+      } else if (n.type !== "core/Group") {
         // Normal node: Reparenting Logic
         // Check if dropped onto a group
         const potentialParent = this._findPotentialParent(w.x, w.y, n);
-        
+
         if (potentialParent && potentialParent !== n.parent) {
           this.graph.reparent(n, potentialParent);
         } else if (!potentialParent && n.parent) {
@@ -370,23 +443,23 @@ export class Controller {
    */
   _autoParentNodesInGroup(groupNode) {
     const { x: gx, y: gy, w: gw, h: gh } = groupNode.computed;
-    
+
     // Find all nodes that are within the group bounds
     for (const node of this.graph.nodes.values()) {
       // Skip the group itself
       if (node === groupNode) continue;
-      
+
       // Skip if it's already a child of this group
       if (node.parent === groupNode) continue;
-      
+
       // Skip if it's another group (prevent nested groups for now)
       if (node.type === "core/Group") continue;
-      
+
       // Check if node is within group bounds
       const { x: nx, y: ny, w: nw, h: nh } = node.computed;
       const nodeCenterX = nx + nw / 2;
       const nodeCenterY = ny + nh / 2;
-      
+
       // Use center point to determine if node is inside group
       if (
         nodeCenterX >= gx &&
@@ -409,7 +482,7 @@ export class Controller {
       // Check if n is descendant of excludeNode
       let p = n.parent;
       let isDescendant = false;
-      while(p) {
+      while (p) {
         if (p === excludeNode) {
           isDescendant = true;
           break;
@@ -433,7 +506,7 @@ export class Controller {
       selection: this.selection,
       tempEdge: tEdge,
     });
-    
+
     this.htmlOverlay?.draw(this.graph, this.selection);
   }
 
