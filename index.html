@@ -10,10 +10,7 @@
 
 <body>
   <div id="wrap">
-    <main class="content-root">
-      <canvas id="cv"></canvas>
-      <canvas id="minimap"></canvas>
-
+    <main class="content-root" id="graph-editor">
       <div id="toolbar">
         <button id="saveBtn" title="Save graph to file (JSON)">
           💾 Save
@@ -109,7 +106,7 @@
           <span class="shortcut-key">Right Click</span>
         </div>
       </div>
-      <main class="content-root" id="graph-editor"></main>
+    </main>
   </div>
   <script type="module">
     import { createGraphEditor } from "./src/index.js";
