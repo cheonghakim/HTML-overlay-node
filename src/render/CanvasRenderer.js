@@ -20,13 +20,19 @@ export class CanvasRenderer {
 
     this.theme = Object.assign(
       {
-        bg: "#141417",
-        grid: "#25252a",
-        node: "#1e1e24",
-        title: "#2a2a31",
-        text: "#e9e9ef",
-        port: "#8aa1ff",
-        edge: "#7f8cff",
+        bg: "#0d0d0f",           // Darker background
+        grid: "#1a1a1d",         // Subtle grid
+        node: "#16161a",         // Darker nodes
+        nodeBorder: "#2a2a2f",   // Subtle border
+        title: "#1f1f24",        // Darker header
+        text: "#e4e4e7",         // Softer white
+        textMuted: "#a1a1aa",    // Muted text
+        port: "#6366f1",         // Indigo for data ports
+        portExec: "#10b981",     // Emerald for exec ports
+        edge: "#52525b",         // Neutral edge color
+        edgeActive: "#8b5cf6",   // Purple for active
+        accent: "#6366f1",       // Indigo accent
+        accentBright: "#818cf8", // Brighter accent
       },
       theme
     );
@@ -152,7 +158,8 @@ export class CanvasRenderer {
 
     // draw grid in world space so it pans/zooms
     this._applyTransform();
-    ctx.strokeStyle = theme.grid;
+    // Make grid subtle but visible
+    ctx.strokeStyle = this._rgba(theme.grid, 0.35); // Subtle but visible
     ctx.lineWidth = 1 / scale; // keep 1px apparent
 
     const base = 20; // world units
@@ -190,6 +197,7 @@ export class CanvasRenderer {
       time = performance.now(),
       dt = 0,
       groups = null,
+      activeEdges = new Set(),
     } = {}
   ) {
     // Update transforms first
@@ -200,16 +208,6 @@ export class CanvasRenderer {
     this._applyTransform();
 
     ctx.save();
-    if (running) {
-      const speed = 120; // px/s
-      const phase =
-        (((time / 1000) * speed) / this.scale) % CanvasRenderer.FONT_SIZE;
-      ctx.setLineDash([6 / this.scale, 6 / this.scale]);
-      ctx.lineDashOffset = -phase;
-    } else {
-      ctx.setLineDash([]);
-      ctx.lineDashOffset = 0;
-    }
 
     // 1. Draw Groups (Backgrounds)
     for (const n of graph.nodes.values()) {
@@ -221,40 +219,62 @@ export class CanvasRenderer {
       }
     }
 
-    // 2. Draw Edges
-    ctx.strokeStyle = theme.edge;
-    ctx.lineWidth = 2 * this.scale;
-    for (const e of graph.edges.values()) this._drawEdge(graph, e);
+    // 2. Draw Edges (BEFORE nodes so ports appear on top)
+    ctx.lineWidth = 1.5 / this.scale; // Thinner, more refined edges
 
-    // temp edge (given in screen coords); convert to world if needed
+    // Calculate animation values if running
+    let dashArray = null;
+    let dashOffset = 0;
+    if (running) {
+      const speed = 120;
+      const phase = (((time / 1000) * speed) / this.scale) % CanvasRenderer.FONT_SIZE;
+      dashArray = [6 / this.scale, 6 / this.scale];
+      dashOffset = -phase;
+    }
+
+    for (const e of graph.edges.values()) {
+      const shouldAnimate = activeEdges && activeEdges.size > 0 && activeEdges.has(e.id);
+
+      if (running && shouldAnimate && dashArray) {
+        ctx.setLineDash(dashArray);
+        ctx.lineDashOffset = dashOffset;
+      } else {
+        ctx.setLineDash([]);
+        ctx.lineDashOffset = 0;
+      }
+
+      const isActive = activeEdges && activeEdges.has(e.id);
+      if (isActive) {
+        ctx.strokeStyle = "#00ffff";
+        ctx.lineWidth = 3 * this.scale;
+      } else {
+        ctx.strokeStyle = theme.edge;
+        ctx.lineWidth = 1.5 / this.scale;
+      }
+      this._drawEdge(graph, e);
+    }
+
+    // temp edge preview
     if (tempEdge) {
       const a = this.screenToWorld(tempEdge.x1, tempEdge.y1);
       const b = this.screenToWorld(tempEdge.x2, tempEdge.y2);
 
-      // 점선 프리뷰
       const prevDash = this.ctx.getLineDash();
       this.ctx.setLineDash([6 / this.scale, 6 / this.scale]);
 
       let ptsForArrow = null;
       if (this.edgeStyle === "line") {
         this._drawLine(a.x, a.y, b.x, b.y);
-        ptsForArrow = [
-          { x: a.x, y: a.y },
-          { x: b.x, y: b.y },
-        ];
+        ptsForArrow = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
       } else if (this.edgeStyle === "orthogonal") {
         ptsForArrow = this._drawOrthogonal(a.x, a.y, b.x, b.y);
       } else {
         this._drawCurve(a.x, a.y, b.x, b.y);
-        ptsForArrow = [
-          { x: a.x, y: a.y },
-          { x: b.x, y: b.y },
-        ];
+        ptsForArrow = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
       }
 
       this.ctx.setLineDash(prevDash);
 
-      // 화살표 표시: 마지막 세그먼트 방향 사용
       if (ptsForArrow && ptsForArrow.length >= 2) {
         const p1 = ptsForArrow[ptsForArrow.length - 2];
         const p2 = ptsForArrow[ptsForArrow.length - 1];
@@ -263,15 +283,30 @@ export class CanvasRenderer {
         this._drawArrowhead(p1.x, p1.y, p2.x, p2.y, 12);
       }
     }
-    ctx.restore();
 
-    // 3. Draw Other Nodes
+    // 3. Draw Other Nodes (AFTER edges)
+    // For nodes with HTML overlays, skip ports initially
     for (const n of graph.nodes.values()) {
       if (n.type !== "core/Group") {
         const sel = selection.has(n.id);
-        this._drawNode(n, sel);
         const def = this.registry?.types?.get(n.type);
+        const hasHtmlOverlay = !!(def?.html);
+
+        // Draw node, but skip ports if it has HTML overlay
+        this._drawNode(n, sel, hasHtmlOverlay);
         if (def?.onDraw) def.onDraw(n, { ctx, theme });
+      }
+    }
+
+    // 4. Draw ports for HTML overlay nodes LAST (so they appear above HTML)
+    for (const n of graph.nodes.values()) {
+      if (n.type !== "core/Group") {
+        const def = this.registry?.types?.get(n.type);
+        const hasHtmlOverlay = !!(def?.html);
+
+        if (hasHtmlOverlay) {
+          this._drawPorts(n);
+        }
       }
     }
 
@@ -283,9 +318,9 @@ export class CanvasRenderer {
     const n = parseInt(
       c.length === 3
         ? c
-            .split("")
-            .map((x) => x + x)
-            .join("")
+          .split("")
+          .map((x) => x + x)
+          .join("")
         : c,
       16
     );
@@ -295,27 +330,39 @@ export class CanvasRenderer {
     return `rgba(${r},${g},${b},${a})`;
   }
 
-  _drawNode(node, selected) {
+  _drawNode(node, selected, skipPorts = false) {
     const { ctx, theme } = this;
     const r = 8;
     const { x, y, w, h } = node.computed;
-    
+
+    // Draw subtle shadow
+    if (!selected) {
+      ctx.save();
+      ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
+      ctx.shadowBlur = 8 / this.scale;
+      ctx.shadowOffsetY = 2 / this.scale;
+      ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+      roundRect(ctx, x, y, w, h, r);
+      ctx.fill();
+      ctx.restore();
+    }
+
     // Draw main body
     ctx.fillStyle = theme.node;
-    ctx.strokeStyle = selected ? CanvasRenderer.SELECTED_NODE_COLOR : "#333";
-    ctx.lineWidth = (selected ? 2 : 1.2) / this.scale;
+    ctx.strokeStyle = selected ? theme.accentBright : theme.nodeBorder;
+    ctx.lineWidth = (selected ? 1.5 : 1) / this.scale;
     roundRect(ctx, x, y, w, h, r);
     ctx.fill();
     ctx.stroke();
-    
-    // Draw header (fill only, no bottom border)
+
+    // Draw header
     ctx.fillStyle = theme.title;
     roundRect(ctx, x, y, w, 24, { tl: r, tr: r, br: 0, bl: 0 });
     ctx.fill();
-    
-    // Manually stroke only top and sides of header (not bottom)
-    ctx.strokeStyle = selected ? CanvasRenderer.SELECTED_NODE_COLOR : "#333";
-    ctx.lineWidth = (selected ? 2 : 1.2) / this.scale;
+
+    // Header border (only top and sides)
+    ctx.strokeStyle = selected ? theme.accentBright : theme.nodeBorder;
+    ctx.lineWidth = (selected ? 1.5 : 1) / this.scale;
     ctx.beginPath();
     // Top-left corner to top-right corner
     ctx.moveTo(x + r, y);
@@ -336,14 +383,123 @@ export class CanvasRenderer {
       baseline: "middle",
       align: "left",
     });
-    ctx.fillStyle = theme.port;
+
+    // Skip port drawing if requested (for HTML overlay nodes)
+    if (skipPorts) return;
+
+    // Draw input ports
     node.inputs.forEach((p, i) => {
       const rct = portRect(node, p, i, "in");
-      ctx.fillRect(rct.x, rct.y, rct.w, rct.h);
+      const cx = rct.x + rct.w / 2;
+      const cy = rct.y + rct.h / 2;
+
+      if (p.portType === "exec") {
+        // Draw exec port - rounded square
+        const portSize = 8;
+        ctx.fillStyle = theme.portExec;
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.3)";
+        ctx.lineWidth = 2 / this.scale;
+        ctx.beginPath();
+        ctx.roundRect(cx - portSize / 2, cy - portSize / 2, portSize, portSize, 2);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        // Draw data port - circle with outline
+        ctx.fillStyle = theme.port;
+        ctx.strokeStyle = "rgba(99, 102, 241, 0.3)";
+        ctx.lineWidth = 2 / this.scale;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
     });
+
+    // Draw output ports
     node.outputs.forEach((p, i) => {
       const rct = portRect(node, p, i, "out");
-      ctx.fillRect(rct.x, rct.y, rct.w, rct.h);
+      const cx = rct.x + rct.w / 2;
+      const cy = rct.y + rct.h / 2;
+
+      if (p.portType === "exec") {
+        // Draw exec port - rounded square
+        const portSize = 8;
+        ctx.fillStyle = theme.portExec;
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.3)";
+        ctx.lineWidth = 2 / this.scale;
+        ctx.beginPath();
+        ctx.roundRect(cx - portSize / 2, cy - portSize / 2, portSize, portSize, 2);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        // Draw data port - circle with outline
+        ctx.fillStyle = theme.port;
+        ctx.strokeStyle = "rgba(99, 102, 241, 0.3)";
+        ctx.lineWidth = 2 / this.scale;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    });
+  }
+
+  _drawPorts(node) {
+    const { ctx, theme } = this;
+
+    // Draw input ports
+    node.inputs.forEach((p, i) => {
+      const rct = portRect(node, p, i, "in");
+      const cx = rct.x + rct.w / 2;
+      const cy = rct.y + rct.h / 2;
+
+      if (p.portType === "exec") {
+        // Draw exec port - rounded square with subtle glow
+        const portSize = 8;
+        ctx.fillStyle = theme.portExec;
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.3)";
+        ctx.lineWidth = 2 / this.scale;
+        ctx.beginPath();
+        ctx.roundRect(cx - portSize / 2, cy - portSize / 2, portSize, portSize, 2);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        // Draw data port - circle with subtle outline
+        ctx.fillStyle = theme.port;
+        ctx.strokeStyle = "rgba(99, 102, 241, 0.3)";
+        ctx.lineWidth = 2 / this.scale;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+
+    // Draw output ports
+    node.outputs.forEach((p, i) => {
+      const rct = portRect(node, p, i, "out");
+      const cx = rct.x + rct.w / 2;
+      const cy = rct.y + rct.h / 2;
+
+      if (p.portType === "exec") {
+        // Draw exec port - rounded square
+        const portSize = 8;
+        ctx.fillStyle = theme.portExec;
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.3)";
+        ctx.lineWidth = 2 / this.scale;
+        ctx.beginPath();
+        ctx.roundRect(cx - portSize / 2, cy - portSize / 2, portSize, portSize, 2);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        // Draw data port - circle with outline
+        ctx.fillStyle = theme.port;
+        ctx.strokeStyle = "rgba(99, 102, 241, 0.3)";
+        ctx.lineWidth = 2 / this.scale;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
     });
   }
 

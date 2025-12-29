@@ -52,6 +52,125 @@ export class Runner {
     }
   }
 
+  /**
+   * Execute connected nodes once from a starting node
+   * @param {string} startNodeId - ID of the node to start from
+   * @param {number} dt - Delta time
+   */
+  runOnce(startNodeId, dt = 0) {
+    console.log("[Runner.runOnce] Starting exec flow from node:", startNodeId);
+
+    const executedNodes = [];
+    const allConnectedNodes = new Set();
+    let currentNodeId = startNodeId;
+
+    // Follow exec flow
+    while (currentNodeId) {
+      const node = this.graph.nodes.get(currentNodeId);
+      if (!node) {
+        console.warn(`[Runner.runOnce] Node not found: ${currentNodeId}`);
+        break;
+      }
+
+      executedNodes.push(currentNodeId);
+      allConnectedNodes.add(currentNodeId);
+      console.log(`[Runner.runOnce] Executing: ${node.title} (${node.type})`);
+
+      // Find and add data dependency nodes (nodes providing input data)
+      for (const input of node.inputs) {
+        if (input.portType === "data") {
+          // Find edge feeding this data input
+          for (const edge of this.graph.edges.values()) {
+            if (edge.toNode === currentNodeId && edge.toPort === input.id) {
+              const sourceNode = this.graph.nodes.get(edge.fromNode);
+              if (sourceNode && !allConnectedNodes.has(edge.fromNode)) {
+                allConnectedNodes.add(edge.fromNode);
+                // Execute data source node before current node
+                this.executeNode(edge.fromNode, dt);
+              }
+            }
+          }
+        }
+      }
+
+      // Execute current node
+      this.executeNode(currentNodeId, dt);
+
+      // Find next node via exec output
+      currentNodeId = this.findNextExecNode(currentNodeId);
+    }
+
+    console.log("[Runner.runOnce] Executed nodes:", executedNodes.length);
+
+    // Find all edges involved (both exec and data)
+    const connectedEdges = new Set();
+    for (const edge of this.graph.edges.values()) {
+      if (allConnectedNodes.has(edge.fromNode) && allConnectedNodes.has(edge.toNode)) {
+        connectedEdges.add(edge.id);
+      }
+    }
+
+    console.log("[Runner.runOnce] Connected edges count:", connectedEdges.size);
+    return { connectedNodes: allConnectedNodes, connectedEdges };
+  }
+
+  /**
+   * Find the next node to execute by following exec output
+   * @param {string} nodeId - Current node ID
+   * @returns {string|null} Next node ID or null
+   */
+  findNextExecNode(nodeId) {
+    const node = this.graph.nodes.get(nodeId);
+    if (!node) return null;
+
+    // Find exec output port
+    const execOutput = node.outputs.find(p => p.portType === "exec");
+    if (!execOutput) return null;
+
+    // Find edge from exec output
+    for (const edge of this.graph.edges.values()) {
+      if (edge.fromNode === nodeId && edge.fromPort === execOutput.id) {
+        return edge.toNode;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Execute a single node
+   * @param {string} nodeId - Node ID to execute
+   * @param {number} dt - Delta time
+   */
+  executeNode(nodeId, dt) {
+    const node = this.graph.nodes.get(nodeId);
+    if (!node) return;
+
+    const def = this.registry.types.get(node.type);
+    if (!def?.onExecute) return;
+
+    try {
+      def.onExecute(node, {
+        dt,
+        graph: this.graph,
+        getInput: (portName) => {
+          const p = node.inputs.find((i) => i.name === portName) || node.inputs[0];
+          return p ? this.graph.getInput(node.id, p.id) : undefined;
+        },
+        setOutput: (portName, value) => {
+          const p = node.outputs.find((o) => o.name === portName) || node.outputs[0];
+          if (p) {
+            // Write directly to current buffer so other nodes can read it immediately
+            const key = `${node.id}:${p.id}`;
+            this.graph._curBuf().set(key, value);
+          }
+        },
+      });
+    } catch (err) {
+      this.hooks?.emit?.("error", err);
+    }
+  }
+
   start() {
     if (this.running) return;
     this.running = true;

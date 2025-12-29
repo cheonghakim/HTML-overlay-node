@@ -54,9 +54,9 @@ export class GroupManager {
   }
 
   addGroupFromSelection({ title = "Group", margin = { x: 12, y: 12 } } = {}) {
-    // Controller에서 selection을 받아와야 함.
+    // Controller에서 selection을 받아와야 함
     // 여기서는 간단히 graph.nodes를 순회하며 selected 상태를 확인한다고 가정하거나
-    // 외부에서 members를 넘겨받는 것이 좋음.
+    // 외부에서 members를 넘겨받는 것이 좋음
     // 일단은 외부에서 members를 넘겨받는 addGroup을 활용.
     return null;
   }

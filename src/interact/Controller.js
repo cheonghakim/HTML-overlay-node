@@ -14,12 +14,13 @@ export class Controller {
   static MIN_NODE_WIDTH = 80;
   static MIN_NODE_HEIGHT = 60;
 
-  constructor({ graph, renderer, hooks, htmlOverlay, contextMenu }) {
+  constructor({ graph, renderer, hooks, htmlOverlay, contextMenu, portRenderer }) {
     this.graph = graph;
     this.renderer = renderer;
     this.hooks = hooks;
     this.htmlOverlay = htmlOverlay;
     this.contextMenu = contextMenu;
+    this.portRenderer = portRenderer; // Separate renderer for ports above HTML
 
     this.stack = new CommandStack();
     this.selection = new Set();
@@ -29,6 +30,11 @@ export class Controller {
     this.resizing = null;
     this.gDragging = null;
     this.gResizing = null;
+    this.boxSelecting = null; // { startX, startY, currentX, currentY } - world coords
+
+    // Feature flags
+    this.snapToGrid = true; // Snap nodes to grid (toggle with G key)
+    this.gridSize = 20; // Grid size for snapping
 
     this._cursor = "default";
 
@@ -38,6 +44,7 @@ export class Controller {
     this._onMoveEvt = this._onMove.bind(this);
     this._onUpEvt = this._onUp.bind(this);
     this._onContextMenuEvt = this._onContextMenu.bind(this);
+    this._onDblClickEvt = this._onDblClick.bind(this);
 
     this._bindEvents();
   }
@@ -45,6 +52,7 @@ export class Controller {
   destroy() {
     const c = this.renderer.canvas;
     c.removeEventListener("mousedown", this._onDownEvt);
+    c.removeEventListener("dblclick", this._onDblClickEvt);
     c.removeEventListener("wheel", this._onWheelEvt, { passive: false });
     c.removeEventListener("contextmenu", this._onContextMenuEvt);
     window.removeEventListener("mousemove", this._onMoveEvt);
@@ -55,6 +63,7 @@ export class Controller {
   _bindEvents() {
     const c = this.renderer.canvas;
     c.addEventListener("mousedown", this._onDownEvt);
+    c.addEventListener("dblclick", this._onDblClickEvt);
     c.addEventListener("wheel", this._onWheelEvt, { passive: false });
     c.addEventListener("contextmenu", this._onContextMenuEvt);
     window.addEventListener("mousemove", this._onMoveEvt);
@@ -66,6 +75,20 @@ export class Controller {
     this.isAlt = e.altKey;
     this.isShift = e.shiftKey;
     this.isCtrl = e.ctrlKey;
+
+    // Toggle snap-to-grid with G key
+    if (e.key.toLowerCase() === "g" && !e.ctrlKey && !e.metaKey) {
+      this.snapToGrid = !this.snapToGrid;
+      this.render(); // Update UI
+      return;
+    }
+
+    // Group selected nodes: Ctrl/Cmd + G
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
+      e.preventDefault();
+      this._createGroupFromSelection();
+      return;
+    }
 
     // Undo: Ctrl/Cmd + Z  (Shift+Z → Redo)
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -81,6 +104,17 @@ export class Controller {
       e.preventDefault();
       this.stack.redo();
       this.render();
+      return;
+    }
+
+    // Align nodes: A (horizontal), Shift+A (vertical)
+    if (e.key.toLowerCase() === "a" && this.selection.size > 1) {
+      e.preventDefault();
+      if (e.shiftKey) {
+        this._alignNodesVertical();
+      } else {
+        this._alignNodesHorizontal();
+      }
       return;
     }
 
@@ -116,13 +150,58 @@ export class Controller {
   _findNodeAtWorld(x, y) {
     // Reverse order (top to bottom)
     const list = [...this.graph.nodes.values()].reverse();
+
     for (const n of list) {
       // Use computed world transform for hit testing
       const { x: nx, y: ny, w, h } = n.computed;
       if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
+        // If this is a group, check if any of its children are under the cursor
+        if (n.type === "core/Group") {
+          // Check all children of this group (recursively)
+          const child = this._findChildNodeAtWorld(n, x, y);
+          if (child) {
+            return child; // Return the child instead of the group
+          }
+        }
         return n;
       }
     }
+    return null;
+  }
+
+  /**
+   * Find child node at world coordinates (recursive helper for _findNodeAtWorld)
+   * @param {Node} parentNode - Parent node (group)
+   * @param {number} x - World x coordinate
+   * @param {number} y - World y coordinate
+   * @returns {Node|null} - Child node at position, or null
+   */
+  _findChildNodeAtWorld(parentNode, x, y) {
+    // Get all children of this parent
+    const children = [];
+    for (const node of this.graph.nodes.values()) {
+      if (node.parent === parentNode) {
+        children.push(node);
+      }
+    }
+
+    // Check children in reverse order (top to bottom)
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i];
+      const { x: nx, y: ny, w, h } = child.computed;
+
+      if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
+        // If this child is also a group, recursively check its children
+        if (child.type === "core/Group") {
+          const grandchild = this._findChildNodeAtWorld(child, x, y);
+          if (grandchild) {
+            return grandchild;
+          }
+        }
+        return child;
+      }
+    }
+
     return null;
   }
 
@@ -172,6 +251,15 @@ export class Controller {
     this.contextMenu.show(node, e.clientX, e.clientY, w);
   }
 
+  _onDblClick(e) {
+    const w = this._posWorld(e);
+    const node = this._findNodeAtWorld(w.x, w.y);
+
+    if (node) {
+      this.hooks?.emit("node:dblclick", node);
+    }
+  }
+
   _resizeHandleRect(node) {
     const s = 10;
     const { x, y, w, h } = node.computed;
@@ -216,6 +304,19 @@ export class Controller {
 
     // 2. Port Hit Test
     const port = this._findPortAtWorld(w.x, w.y);
+
+    // Handle input port click - disconnect existing connection
+    if (e.button === 0 && port && port.dir === "in") {
+      const incoming = this._findIncomingEdge(port.node.id, port.port.id);
+      if (incoming) {
+        // Disconnect the existing edge
+        this.stack.exec(RemoveEdgeCmd(this.graph, incoming.id));
+        this.render();
+        return;
+      }
+    }
+
+    // Handle output port click - start new connection
     if (e.button === 0 && port && port.dir === "out") {
       const outR = portRect(port.node, port.port, port.idx, "out");
       const screenFrom = this.renderer.worldToScreen(outR.x, outR.y + 7);
@@ -233,14 +334,28 @@ export class Controller {
       if (!e.shiftKey) this.selection.clear();
       this.selection.add(node.id);
 
-      // Dragging: store initial world pos difference
-      // When moving, we calculate new world pos, then convert to local
+      // Dragging: store initial world pos difference for all selected nodes
       this.dragging = {
         nodeId: node.id,
         offsetX: w.x - node.computed.x,
         offsetY: w.y - node.computed.y,
         startPos: { ...node.pos }, // for undo
+        selectedNodes: [], // Store all selected nodes and their initial positions
       };
+
+      // Store positions of all selected nodes
+      for (const selectedId of this.selection) {
+        const selectedNode = this.graph.nodes.get(selectedId);
+        if (selectedNode) {
+          this.dragging.selectedNodes.push({
+            node: selectedNode,
+            startWorldX: selectedNode.computed.x,
+            startWorldY: selectedNode.computed.y,
+            startLocalX: selectedNode.pos.x,
+            startLocalY: selectedNode.pos.y,
+          });
+        }
+      }
 
       // If dragging a group, store children's world positions
       if (node.type === "core/Group") {
@@ -260,10 +375,21 @@ export class Controller {
       return;
     }
 
-    // 4. Background Click (Pan)
+    // 4. Background Click (Pan or Box Selection)
     if (e.button === 0) {
       if (this.selection.size) this.selection.clear();
-      this.panning = { x: s.x, y: s.y };
+
+      // Start box selection if Ctrl is held
+      if (e.ctrlKey || e.metaKey) {
+        this.boxSelecting = {
+          startX: w.x,
+          startY: w.y,
+          currentX: w.x,
+          currentY: w.y,
+        };
+      } else {
+        this.panning = { x: s.x, y: s.y };
+      }
       this.render();
       return;
     }
@@ -306,24 +432,44 @@ export class Controller {
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
 
-      // Target World Pos
-      const targetWx = w.x - this.dragging.offsetX;
-      const targetWy = this.isShift ? w.y - 0 : w.y - this.dragging.offsetY;
+      // Calculate delta for main node
+      let targetWx = w.x - this.dragging.offsetX;
+      let targetWy = this.isShift ? w.y - 0 : w.y - this.dragging.offsetY;
 
-      // Update world transforms to get current parent position
-      this.graph.updateWorldTransforms();
-
-      // Convert to Local Pos
-      // local = targetWorld - parentWorld
-      let parentWx = 0;
-      let parentWy = 0;
-      if (n.parent) {
-        parentWx = n.parent.computed.x;
-        parentWy = n.parent.computed.y;
+      // Apply snap-to-grid if enabled
+      if (this.snapToGrid) {
+        targetWx = this._snapToGrid(targetWx);
+        targetWy = this._snapToGrid(targetWy);
       }
 
-      n.pos.x = targetWx - parentWx;
-      n.pos.y = targetWy - parentWy;
+      // Calculate delta from original position
+      const deltaX = targetWx - this.dragging.selectedNodes.find(sn => sn.node.id === n.id).startWorldX;
+      const deltaY = targetWy - this.dragging.selectedNodes.find(sn => sn.node.id === n.id).startWorldY;
+
+      // Update world transforms
+      this.graph.updateWorldTransforms();
+
+      // Move all selected nodes by the same delta
+      for (const { node: selectedNode, startWorldX, startWorldY } of this.dragging.selectedNodes) {
+        // Skip group nodes when shift-dragging (vertical only)
+        if (this.isShift && selectedNode.type === "core/Group") {
+          continue;
+        }
+
+        let newWorldX = startWorldX + deltaX;
+        let newWorldY = startWorldY + deltaY;
+
+        // Convert to local position
+        let parentWx = 0;
+        let parentWy = 0;
+        if (selectedNode.parent) {
+          parentWx = selectedNode.parent.computed.x;
+          parentWy = selectedNode.parent.computed.y;
+        }
+
+        selectedNode.pos.x = newWorldX - parentWx;
+        selectedNode.pos.y = newWorldY - parentWy;
+      }
 
       // If Alt is held and dragging a group, restore children to original world positions
       if (this.isAlt && n.type === "core/Group" && this.dragging.childrenWorldPos) {
@@ -343,6 +489,13 @@ export class Controller {
       return;
     }
 
+    if (this.boxSelecting) {
+      this.boxSelecting.currentX = w.x;
+      this.boxSelecting.currentY = w.y;
+      this.render();
+      return;
+    }
+
     if (this.connecting) {
       this.connecting.x = s.x;
       this.connecting.y = s.y;
@@ -350,9 +503,14 @@ export class Controller {
     }
 
     // Cursor update
+    const port = this._findPortAtWorld(w.x, w.y);
     const node = this._findNodeAtWorld(w.x, w.y);
+
     if (node && this._hitResizeHandle(node, w.x, w.y)) {
       this._setCursor("se-resize");
+    } else if (port) {
+      // Show pointer cursor over ports (for connecting/disconnecting)
+      this._setCursor("pointer");
     } else {
       this._setCursor("default");
     }
@@ -435,6 +593,26 @@ export class Controller {
       this.dragging = null;
       this.render();
     }
+
+    if (this.boxSelecting) {
+      // Select all nodes within the box
+      const { startX, startY, currentX, currentY } = this.boxSelecting;
+      const minX = Math.min(startX, currentX);
+      const maxX = Math.max(startX, currentX);
+      const minY = Math.min(startY, currentY);
+      const maxY = Math.max(startY, currentY);
+
+      for (const node of this.graph.nodes.values()) {
+        const { x, y, w, h } = node.computed;
+        // Check if node intersects with selection box
+        if (x + w >= minX && x <= maxX && y + h >= minY && y <= maxY) {
+          this.selection.add(node.id);
+        }
+      }
+
+      this.boxSelecting = null;
+      this.render();
+    }
   }
 
   /**
@@ -499,15 +677,156 @@ export class Controller {
     return null;
   }
 
+  /**
+   * Snap a coordinate to the grid
+   * @param {number} value - The value to snap
+   * @returns {number} - Snapped value
+   */
+  _snapToGrid(value) {
+    return Math.round(value / this.gridSize) * this.gridSize;
+  }
+
+  /**
+   * Create a group from currently selected nodes
+   */
+  _createGroupFromSelection() {
+    if (this.selection.size === 0) {
+      console.warn("No nodes selected to group");
+      return;
+    }
+
+    // Get selected nodes
+    const selectedNodes = Array.from(this.selection).map(id => this.graph.getNodeById(id));
+
+    // Calculate bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const node of selectedNodes) {
+      const { x, y, w, h } = node.computed;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + w);
+      maxY = Math.max(maxY, y + h);
+    }
+
+    const margin = 20;
+    const groupX = minX - margin;
+    const groupY = minY - margin;
+    const groupWidth = maxX - minX + margin * 2;
+    const groupHeight = maxY - minY + margin * 2;
+
+    // Create group via GroupManager
+    if (this.graph.groupManager) {
+      this.graph.groupManager.addGroup({
+        title: "Group",
+        x: groupX,
+        y: groupY,
+        width: groupWidth,
+        height: groupHeight,
+        members: Array.from(this.selection),
+      });
+      this.selection.clear();
+      this.render();
+    }
+  }
+
+  /**
+   * Align selected nodes horizontally (same Y position)
+   */
+  _alignNodesHorizontal() {
+    if (this.selection.size < 2) return;
+
+    const nodes = Array.from(this.selection).map(id => this.graph.getNodeById(id));
+    const avgY = nodes.reduce((sum, n) => sum + n.computed.y, 0) / nodes.length;
+
+    for (const node of nodes) {
+      const parentY = node.parent ? node.parent.computed.y : 0;
+      node.pos.y = avgY - parentY;
+    }
+
+    this.graph.updateWorldTransforms();
+    this.render();
+  }
+
+  /**
+   * Align selected nodes vertically (same X position)
+   */
+  _alignNodesVertical() {
+    if (this.selection.size < 2) return;
+
+    const nodes = Array.from(this.selection).map(id => this.graph.getNodeById(id));
+    const avgX = nodes.reduce((sum, n) => sum + n.computed.x, 0) / nodes.length;
+
+    for (const node of nodes) {
+      const parentX = node.parent ? node.parent.computed.x : 0;
+      node.pos.x = avgX - parentX;
+    }
+
+    this.graph.updateWorldTransforms();
+    this.render();
+  }
+
   render() {
     const tEdge = this.renderTempEdge();
 
     this.renderer.draw(this.graph, {
       selection: this.selection,
       tempEdge: tEdge,
+      boxSelecting: this.boxSelecting,
+      activeEdges: this.activeEdges || new Set(), // For animation
     });
 
     this.htmlOverlay?.draw(this.graph, this.selection);
+
+    // Draw box selection rectangle on top of everything
+    if (this.boxSelecting) {
+      const { startX, startY, currentX, currentY } = this.boxSelecting;
+      const minX = Math.min(startX, currentX);
+      const minY = Math.min(startY, currentY);
+      const width = Math.abs(currentX - startX);
+      const height = Math.abs(currentY - startY);
+
+      const screenStart = this.renderer.worldToScreen(minX, minY);
+      const screenEnd = this.renderer.worldToScreen(minX + width, minY + height);
+
+      const ctx = this.renderer.ctx;
+      ctx.save();
+      this.renderer._resetTransform();
+
+      // Draw selection box
+      ctx.strokeStyle = "#6cf";
+      ctx.fillStyle = "rgba(102, 204, 255, 0.1)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(screenStart.x, screenStart.y, screenEnd.x - screenStart.x, screenEnd.y - screenStart.y);
+      ctx.fillRect(screenStart.x, screenStart.y, screenEnd.x - screenStart.x, screenEnd.y - screenStart.y);
+
+      ctx.restore();
+    }
+
+    // Draw ports for HTML overlay nodes on separate canvas (above HTML)
+    if (this.portRenderer) {
+      // Clear port canvas
+      const portCtx = this.portRenderer.ctx;
+      portCtx.clearRect(0, 0, this.portRenderer.canvas.width, this.portRenderer.canvas.height);
+
+      // Sync transform
+      this.portRenderer.scale = this.renderer.scale;
+      this.portRenderer.offsetX = this.renderer.offsetX;
+      this.portRenderer.offsetY = this.renderer.offsetY;
+
+      // Draw ports for HTML overlay nodes
+      this.portRenderer._applyTransform();
+      for (const n of this.graph.nodes.values()) {
+        if (n.type !== "core/Group") {
+          const def = this.portRenderer.registry?.types?.get(n.type);
+          const hasHtmlOverlay = !!(def?.html);
+
+          if (hasHtmlOverlay) {
+            this.portRenderer._drawPorts(n);
+          }
+        }
+      }
+      this.portRenderer._resetTransform();
+    }
   }
 
   renderTempEdge() {

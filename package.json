@@ -1,14 +1,14 @@
 {
-  "name": "free-node",
+  "name": "html-overlay-node",
   "version": "0.0.1",
   "description": "A customizable, LiteGraph-style node editor library with canvas rendering, HTML overlays, and flexible execution control",
-  "main": "dist/free-node.umd.js",
-  "module": "dist/free-node.es.js",
+  "main": "dist/html-overlay-node.umd.js",
+  "module": "dist/html-overlay-node.es.js",
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/free-node.es.js",
-      "require": "./dist/free-node.umd.js"
+      "import": "./dist/html-overlay-node.es.js",
+      "require": "./dist/html-overlay-node.umd.js"
     }
   },
   "files": [
@@ -44,15 +44,13 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cheonghakim/free-node.git"
+    "url": "https://github.com/cheonghakim/html-overlay-node.git"
   },
   "bugs": {
-    "url": "https://github.com/cheonghakim/free-node/issues"
+    "url": "https://github.com/cheonghakim/html-overlay-node/issues"
   },
-  "homepage": "https://github.com/cheonghakim/free-node#readme",
-  "dependencies": {
-    "vite": "^6.3.5"
-  },
+  "homepage": "https://github.com/cheonghakim/html-overlay-node#readme",
+  "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@vitest/coverage-v8": "^2.1.8",
@@ -60,6 +58,7 @@
     "jsdom": "^27.2.0",
     "prettier": "^3.4.2",
     "terser": "^5.43.1",
+    "vite": "^6.3.5",
     "vitest": "^2.1.8"
   }
 }

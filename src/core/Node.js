@@ -26,8 +26,8 @@ export class Node {
     this.title = title ?? type;
     this.pos = { x, y };
     this.size = { width, height };
-    this.inputs = []; // {id,name,datatype}
-    this.outputs = []; // {id,name,datatype}
+    this.inputs = []; // {id,name,datatype,portType,dir}
+    this.outputs = []; // {id,name,datatype,portType,dir}
     this.state = {}; // User state data
 
     // Tree Structure
@@ -40,13 +40,14 @@ export class Node {
    * Add an input port to this node
    * @param {string} name - Port name
    * @param {string} [datatype="any"] - Data type for the port
+   * @param {string} [portType="data"] - Port type: "exec" or "data"
    * @returns {Object} The created port
    */
-  addInput(name, datatype = "any") {
+  addInput(name, datatype = "any", portType = "data") {
     if (!name || typeof name !== "string") {
       throw new Error("Input port name must be a non-empty string");
     }
-    const port = { id: randomUUID(), name, datatype, dir: "in" };
+    const port = { id: randomUUID(), name, datatype, portType, dir: "in" };
     this.inputs.push(port);
     return port;
   }
@@ -55,13 +56,14 @@ export class Node {
    * Add an output port to this node
    * @param {string} name - Port name
    * @param {string} [datatype="any"] - Data type for the port
+   * @param {string} [portType="data"] - Port type: "exec" or "data"
    * @returns {Object} The created port
    */
-  addOutput(name, datatype = "any") {
+  addOutput(name, datatype = "any", portType = "data") {
     if (!name || typeof name !== "string") {
       throw new Error("Output port name must be a non-empty string");
     }
-    const port = { id: randomUUID(), name, datatype, dir: "out" };
+    const port = { id: randomUUID(), name, datatype, portType, dir: "out" };
     this.outputs.push(port);
     return port;
   }

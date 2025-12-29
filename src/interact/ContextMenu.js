@@ -142,7 +142,7 @@ export class ContextMenu {
    */
   _createMenuElement() {
     const menu = document.createElement("div");
-    menu.className = "free-node-context-menu";
+    menu.className = "html-overlay-node-context-menu";
 
     // Styling
     Object.assign(menu.style, {

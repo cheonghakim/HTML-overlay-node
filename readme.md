@@ -1,7 +1,7 @@
 # HTML-overlay-Node
 
-[![CI](https://github.com/cheonghakim/HTML-overlay-node/workflows/CI/badge.svg)](https://github.com/cheonghakim/HTML-overlay-node/actions)
-[![npm version](https://img.shields.io/npm/v/HTML-overlay-node.svg)](https://www.npmjs.com/package/HTML-overlay-node)
+[![CI](https://github.com/cheonghakim/html-overlay-node/workflows/CI/badge.svg)](https://github.com/cheonghakim/html-overlay-node/actions)
+[![npm version](https://img.shields.io/npm/v/html-overlay-node.svg)](https://www.npmjs.com/package/html-overlay-node)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
 **HTML-overlay-Node** is a customizable, LiteGraph-style node editor library for building visual programming interfaces. It uses **Canvas rendering** for fast performance and supports node type registration, execution cycle control, custom drawing, HTML overlays, and group management.
@@ -10,25 +10,34 @@
 
 ## ✨ Features
 
-- 🎨 **Canvas-based rendering** - Fast and smooth performance
+- 🎨 **Production-quality design** - Professional dark theme with refined aesthetics
 - 🔧 **Type registration system** - Easily create custom node types
-- ⚡ **Flexible execution** - Automatic or manual execution modes  
-- 🔗 **Data flow** - Connect nodes with edges for data propagation
+- 🔌 **Dual port system** - Exec ports (flow control) and data ports (values)
+- ⚡ **Flexible execution** - Automatic or manual execution modes with trigger nodes
+- 🔗 **Multiple edge styles** - Curved, orthogonal, or straight connections
 - 💾 **Serialization** - Save and load graphs with `toJSON`/`fromJSON`
-- 🖱️ **Mouse interaction** - Zoom, pan, drag nodes, and connect ports
+- 🖱️ **Rich interactions** - Zoom, pan, drag, box select, and snap-to-grid
+- ⌨️ **Keyboard shortcuts** - Undo/redo, align, group, and more
 - 🎯 **Custom drawing** - Per-node custom rendering with `onDraw`
-- 🌐 **HTML overlays** - Embed interactive HTML UIs in nodes
+- 🌐 **HTML overlays** - Embed interactive HTML UIs with proper port layering
 - 📦 **Group nodes** - Organize nodes in hierarchical groups
 - 🪝 **Event hooks** - Subscribe to graph events for extensibility
+- 🎥 **Visual feedback** - Smooth animations and hover states
 
 ---
+
 ## 🚀 Quick Start
 
 ```javascript
-import { createGraphEditor } from "HTML-overlay-node";
+import { createGraphEditor } from "html-overlay-node";
 
-const canvas = document.getElementById("myCanvas");
-const editor = createGraphEditor(canvas, { autorun: true });
+// One-liner Initialization!
+// Pass a selector or HTMLElement. Canvas and overlays are created automatically.
+const editor = createGraphEditor("#editor-container", {
+  autorun: true,
+  enablePropertyPanel: true, // Integrated property panel (default: true)
+});
+
 const { graph, registry, addGroup, start } = editor;
 
 // Register and add nodes
@@ -37,10 +46,13 @@ registry.register("math/Add", {
   size: { w: 180, h: 80 },
   inputs: [
     { name: "a", datatype: "number" },
-    { name: "b", datatype: "number" }
+    { name: "b", datatype: "number" },
   ],
   outputs: [{ name: "result", datatype: "number" }],
-  onCreate(node) { node.state.a = 0; node.state.b = 0; },
+  onCreate(node) {
+    node.state.a = 0;
+    node.state.b = 0;
+  },
   onExecute(node, { getInput, setOutput }) {
     const a = getInput("a") ?? node.state.a;
     const b = getInput("b") ?? node.state.b;
@@ -60,7 +72,7 @@ addGroup({
   width: 300,
   height: 300,
   color: "#4a5568",
-  members: [node1.id, node2.id]
+  members: [node1.id, node2.id],
 });
 
 start();
@@ -79,13 +91,13 @@ const { addGroup } = editor;
 
 // Create a group
 const group = addGroup({
-  title: "My Group",       // Group name
-  x: 0,                    // X position
-  y: 0,                    // Y position
-  width: 400,              // Width (min: 100)
-  height: 300,             // Height (min: 60)
-  color: "#2d3748",        // Background color
-  members: [node1.id, node2.id]  // Nodes to include
+  title: "My Group", // Group name
+  x: 0, // X position
+  y: 0, // Y position
+  width: 400, // Width (min: 100)
+  height: 300, // Height (min: 60)
+  color: "#2d3748", // Background color
+  members: [node1.id, node2.id], // Nodes to include
 });
 ```
 
@@ -134,12 +146,12 @@ registry.register("ui/TextInput", {
   title: "Text Input",
   size: { w: 220, h: 100 },
   outputs: [{ name: "text", datatype: "string" }],
-  
+
   html: {
     init(node, el, { header, body }) {
       el.style.backgroundColor = "#1a1a1a";
       el.style.borderRadius = "8px";
-      
+
       const input = document.createElement("input");
       input.type = "text";
       input.placeholder = "Enter text...";
@@ -149,35 +161,35 @@ registry.register("ui/TextInput", {
         background: "#111",
         border: "1px solid #444",
         color: "#fff",
-        pointerEvents: "auto"  // IMPORTANT: Enable interaction
+        pointerEvents: "auto", // IMPORTANT: Enable interaction
       });
-      
+
       input.addEventListener("input", (e) => {
         node.state.text = e.target.value;
         hooks.emit("node:updated", node);
       });
-      
+
       input.addEventListener("mousedown", (e) => e.stopPropagation()); // Prevent drag
-      
+
       body.appendChild(input);
       el._input = input;
     },
-    
+
     update(node, el, { selected }) {
       el.style.borderColor = selected ? "#3b82f6" : "#333";
       if (el._input.value !== (node.state.text || "")) {
         el._input.value = node.state.text || "";
       }
-    }
+    },
   },
-  
+
   onCreate(node) {
     node.state.text = "";
   },
-  
+
   onExecute(node, { setOutput }) {
     setOutput("text", node.state.text || "");
-  }
+  },
 });
 ```
 
@@ -187,6 +199,89 @@ registry.register("ui/TextInput", {
 2. **Stop Propagation**: Prevent canvas drag with `e.stopPropagation()` on `mousedown`
 3. **Update State**: Emit `"node:updated"` when state changes
 4. **Store References**: Cache DOM elements in `el._refs` for performance
+5. **Port Visibility**: HTML overlays are rendered below ports for proper visibility
+
+---
+
+## 🔌 Port Types
+
+HTML-overlay-Node supports two types of ports for different purposes:
+
+### Exec Ports (Flow Control)
+
+Exec ports control the execution flow between nodes.
+
+```javascript
+registry.register("util/Print", {
+  title: "Print",
+  inputs: [
+    { name: "exec", portType: "exec" }, // Execution input
+    { name: "value", portType: "data", datatype: "any" },
+  ],
+  outputs: [
+    { name: "exec", portType: "exec" }, // Execution output
+  ],
+  onExecute(node, { getInput }) {
+    console.log("[Print]", getInput("value"));
+  },
+});
+```
+
+### Data Ports (Values)
+
+Data ports transfer values between nodes.
+
+```javascript
+registry.register("math/Add", {
+  title: "Add",
+  inputs: [
+    { name: "exec", portType: "exec" },
+    { name: "a", portType: "data", datatype: "number" },
+    { name: "b", portType: "data", datatype: "number" },
+  ],
+  outputs: [
+    { name: "exec", portType: "exec" },
+    { name: "result", portType: "data", datatype: "number" },
+  ],
+  onExecute(node, { getInput, setOutput }) {
+    const result = (getInput("a") ?? 0) + (getInput("b") ?? 0);
+    setOutput("result", result);
+  },
+});
+```
+
+### Visual Style
+
+- **Exec ports**: Emerald green rounded squares (8×8px)
+- **Data ports**: Indigo blue circles (10px diameter)
+- Both have subtle outlines for depth
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut                        | Action                      |
+| ------------------------------- | --------------------------- |
+| **Selection**                   |                             |
+| `Click`                         | Select node                 |
+| `Shift + Click`                 | Add to selection            |
+| `Ctrl + Drag`                   | Box select                  |
+| **Editing**                     |                             |
+| `Delete`                        | Delete selected nodes       |
+| `Ctrl + Z`                      | Undo                        |
+| `Ctrl + Y` / `Ctrl + Shift + Z` | Redo                        |
+| **Grouping**                    |                             |
+| `Ctrl + G`                      | Create group from selection |
+| **Alignment**                   |                             |
+| `A`                             | Align nodes horizontally    |
+| `Shift + A`                     | Align nodes vertically      |
+| **Tools**                       |                             |
+| `G`                             | Toggle snap-to-grid         |
+| `?`                             | Toggle shortcuts help       |
+| **Navigation**                  |                             |
+| `Middle Click + Drag`           | Pan canvas                  |
+| `Mouse Wheel`                   | Zoom in/out                 |
+| `Right Click`                   | Context menu                |
 
 ---
 
@@ -196,24 +291,24 @@ For full API documentation, see the comments in [src/index.js](src/index.js).
 
 ### Editor API
 
-| Property | Description |
-|----------|-------------|
-| `graph` | Graph instance |
-| `registry` | Node type registry |
-| `hooks` | Event system |
-| `render()` | Trigger manual render |
-| `start()` | Start execution loop |
-| `stop()` | Stop execution loop |
-| `addGroup(options)` | Create a group |
-| `destroy()` | Cleanup |
+| Property            | Description           |
+| ------------------- | --------------------- |
+| `graph`             | Graph instance        |
+| `registry`          | Node type registry    |
+| `hooks`             | Event system          |
+| `render()`          | Trigger manual render |
+| `start()`           | Start execution loop  |
+| `stop()`            | Stop execution loop   |
+| `addGroup(options)` | Create a group        |
+| `destroy()`         | Cleanup               |
 
 ### Key Methods
 
 - `registry.register(type, definition)` - Register node type
 - `graph.addNode(type, options)` - Create node
-- `graph.addEdge(from, fromPort, to, toPort)` - Connect nodes  
+- `graph.addEdge(from, fromPort, to, toPort)` - Connect nodes
 - `graph.toJSON()` / `graph.fromJSON(json)` - Serialize/deserialize
--  `hooks.on(event, callback)` - Subscribe to events
+- `hooks.on(event, callback)` - Subscribe to events
 
 ### Available Events
 
@@ -227,20 +322,33 @@ For full API documentation, see the comments in [src/index.js](src/index.js).
 
 ## 🎨 Customization
 
-### Custom Themes
+### Theme Colors
 
 ```javascript
 const editor = createGraphEditor(canvas, {
   theme: {
-    background: "#1a1a1a",
-    grid: "#2a2a2a",
-    node: "#2d3748",
-    nodeTitle: "#4a5568",
-    text: "#e2e9ef",
-    wire: "#63b3ed",
-    selection: "#3182ce"
-  }
+    bg: "#0d0d0f", // Canvas background
+    grid: "#1a1a1d", // Grid lines
+    node: "#16161a", // Node background
+    nodeBorder: "#2a2a2f", // Node border
+    title: "#1f1f24", // Node header
+    text: "#e4e4e7", // Primary text
+    textMuted: "#a1a1aa", // Secondary text
+    port: "#6366f1", // Data port color (indigo)
+    portExec: "#10b981", // Exec port color (emerald)
+    edge: "#52525b", // Edge color
+    edgeActive: "#8b5cf6", // Active edge (purple)
+    accent: "#6366f1", // Accent color
+    accentBright: "#818cf8", // Bright accent
+  },
 });
+```
+
+### Edge Styles
+
+```javascript
+// Set edge style
+editor.renderer.setEdgeStyle("orthogonal"); // or "curved", "line"
 ```
 
 ### Custom Node Drawing
@@ -254,12 +362,12 @@ registry.register("visual/Circle", {
     const centerX = x + width / 2;
     const centerY = y + height / 2;
     const radius = Math.min(width, height) / 3;
-    
+
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
     ctx.fillStyle = theme.wire;
     ctx.fill();
-  }
+  },
 });
 ```
 
@@ -281,13 +389,13 @@ graph.fromJSON(saved);
 
 ## 🐛 Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| Canvas not rendering | Ensure canvas has explicit width/height |
-| Nodes not executing | Call `start()` or set `autorun: true` |
-| Type errors | Register node types before using them |
-| HTML overlay not interactive | Set `pointerEvents: "auto"` on elements |
-| Performance issues | Limit to <1000 nodes, optimize `onExecute`/`onDraw` |
+| Issue                        | Solution                                            |
+| ---------------------------- | --------------------------------------------------- |
+| Canvas not rendering         | Ensure canvas has explicit width/height             |
+| Nodes not executing          | Call `start()` or set `autorun: true`               |
+| Type errors                  | Register node types before using them               |
+| HTML overlay not interactive | Set `pointerEvents: "auto"` on elements             |
+| Performance issues           | Limit to <1000 nodes, optimize `onExecute`/`onDraw` |
 
 ---
 
@@ -307,12 +415,12 @@ npm run build # Build library
 
 ## 📄 License
 
-[ISC](LICENSE) © cheonghakim
+[MIT](LICENSE) © cheonghakim
 
 ---
 
 ## 🔗 Links
 
-- [GitHub Repository](https://github.com/cheonghakim/free-node)
-- [Issue Tracker](https://github.com/cheonghakim/free-node/issues)
+- [GitHub Repository](https://github.com/cheonghakim/html-overlay-node)
+- [Issue Tracker](https://github.com/cheonghakim/html-overlay-node/issues)
 - [Changelog](CHANGELOG.md)

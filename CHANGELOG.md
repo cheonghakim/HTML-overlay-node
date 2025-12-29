@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Comprehensive test suite with Vitest
 - ESLint and Prettier for code quality
 - JSDoc comments for public APIs
@@ -16,10 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CONTRIBUTING.md for developer guidelines
 
 ### Fixed
+
 - **BREAKING**: Fixed `Registry.unregister()` logic bug (was throwing error when type existed instead of when it didn't)
 - Improved error messages with contextual information
 
 ### Changed
+
 - Enhanced package.json with proper metadata and exports
 - Improved .gitignore coverage
 - Better README documentation
@@ -27,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.1] - 2025-11-26
 
 ### Added
+
 - Initial release
 - Canvas-based node rendering
 - Node type registration system
@@ -38,5 +42,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built-in node types: Note, HtmlNote, TodoNode, Group
 - Hooks system for extensibility
 
-[Unreleased]: https://github.com/cheonghakim/free-node/compare/v0.0.1...HEAD
-[0.0.1]: https://github.com/cheonghakim/free-node/releases/tag/v0.0.1
+[Unreleased]: https://github.com/cheonghakim/html-overlay-node/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/cheonghakim/html-overlay-node/releases/tag/v0.0.1

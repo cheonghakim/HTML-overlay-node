@@ -8,13 +8,52 @@ import { Runner } from "./core/Runner.js";
 
 import { HtmlOverlay } from "./render/HtmlOverlay.js";
 import { RemoveNodeCmd, ChangeGroupColorCmd } from "./core/commands.js";
+import { Minimap } from "./minimap/Minimap.js";
+import { PropertyPanel } from "./ui/PropertyPanel.js";
 
 
 
 export function createGraphEditor(
-  canvas,
-  { theme, hooks: customHooks, autorun = true } = {}
+  target,
+  {
+    theme,
+    hooks: customHooks,
+    autorun = true,
+    showMinimap = true,
+    enablePropertyPanel = true,
+    propertyPanelContainer = null,
+  } = {}
 ) {
+  let canvas;
+  let container;
+
+  if (typeof target === "string") {
+    target = document.querySelector(target);
+  }
+
+  if (!target) {
+    throw new Error("createGraphEditor: target element not found");
+  }
+
+  if (target instanceof HTMLCanvasElement) {
+    canvas = target;
+    container = canvas.parentElement;
+  } else {
+    container = target;
+    canvas = container.querySelector("canvas");
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      canvas.style.display = "block";
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
+      container.appendChild(canvas);
+    }
+  }
+
+  // Ensure container has relative positioning for overlays
+  if (getComputedStyle(container).position === "static") {
+    container.style.position = "relative";
+  }
   const hooks =
     customHooks ??
     createHooks([
@@ -26,6 +65,7 @@ export function createGraphEditor(
       "edge:create",
       "edge:delete",
       "graph:serialize",
+      "graph:deserialize",
       "error",
       "runner:tick",
       "runner:start",
@@ -40,7 +80,26 @@ export function createGraphEditor(
   // HTML Overlay
   const htmlOverlay = new HtmlOverlay(canvas.parentElement, renderer, registry);
 
-  const controller = new Controller({ graph, renderer, hooks, htmlOverlay });
+  // Port Canvas (above HTML overlay)
+  const portCanvas = document.createElement("canvas");
+  portCanvas.id = "port-canvas";
+  Object.assign(portCanvas.style, {
+    position: "absolute",
+    top: "0",
+    left: "0",
+    pointerEvents: "none", // Pass through clicks
+    zIndex: "20", // Above HTML overlay (z-index 10)
+  });
+  canvas.parentElement.appendChild(portCanvas);
+
+  // Create port renderer (shares transform with main renderer)
+  const portRenderer = new CanvasRenderer(portCanvas, { theme, registry });
+  portRenderer.setTransform = renderer.setTransform.bind(renderer);
+  portRenderer.scale = renderer.scale;
+  portRenderer.offsetX = renderer.offsetX;
+  portRenderer.offsetY = renderer.offsetY;
+
+  const controller = new Controller({ graph, renderer, hooks, htmlOverlay, portRenderer });
 
   // Create context menu after controller (needs commandStack)
   const contextMenu = new ContextMenu({
@@ -52,6 +111,28 @@ export function createGraphEditor(
 
   // Connect context menu to controller
   controller.contextMenu = contextMenu;
+
+  // Create minimap if enabled
+  let minimap = null;
+  if (showMinimap) {
+    minimap = new Minimap(container, { graph, renderer });
+  }
+
+  // Initialize Property Panel if enabled
+  let propertyPanel = null;
+  if (enablePropertyPanel) {
+    propertyPanel = new PropertyPanel(propertyPanelContainer || container, {
+      graph,
+      hooks,
+      registry,
+      render: () => controller.render(),
+    });
+
+    // Handle node double-click to open property panel
+    hooks.on("node:dblclick", (node) => {
+      propertyPanel.open(node);
+    });
+  }
 
   const runner = new Runner({ graph, registry, hooks });
 
@@ -338,13 +419,422 @@ export function createGraphEditor(
     },
   });
 
+  // ===== MATH NODES =====
+  registry.register("math/Add", {
+    title: "Add",
+    size: { w: 140, h: 100 },
+    inputs: [
+      { name: "exec", portType: "exec" },
+      { name: "a", portType: "data", datatype: "number" },
+      { name: "b", portType: "data", datatype: "number" },
+    ],
+    outputs: [
+      { name: "exec", portType: "exec" },
+      { name: "result", portType: "data", datatype: "number" },
+    ],
+    onCreate(node) {
+      node.state.a = 0;
+      node.state.b = 0;
+    },
+    onExecute(node, { getInput, setOutput }) {
+      const a = getInput("a") ?? 0;
+      const b = getInput("b") ?? 0;
+      const result = a + b;
+      console.log("[Add] a:", a, "b:", b, "result:", result);
+      setOutput("result", result);
+    },
+  });
+
+  registry.register("math/Subtract", {
+    title: "Subtract",
+    size: { w: 140, h: 80 },
+    inputs: [
+      { name: "a", datatype: "number" },
+      { name: "b", datatype: "number" },
+    ],
+    outputs: [{ name: "result", datatype: "number" }],
+    onExecute(node, { getInput, setOutput }) {
+      const a = getInput("a") ?? 0;
+      const b = getInput("b") ?? 0;
+      setOutput("result", a - b);
+    },
+  });
+
+  registry.register("math/Multiply", {
+    title: "Multiply",
+    size: { w: 140, h: 100 },
+    inputs: [
+      { name: "exec", portType: "exec" },
+      { name: "a", portType: "data", datatype: "number" },
+      { name: "b", portType: "data", datatype: "number" },
+    ],
+    outputs: [
+      { name: "exec", portType: "exec" },
+      { name: "result", portType: "data", datatype: "number" },
+    ],
+    onExecute(node, { getInput, setOutput }) {
+      const a = getInput("a") ?? 0;
+      const b = getInput("b") ?? 0;
+      const result = a * b;
+      console.log("[Multiply] a:", a, "b:", b, "result:", result);
+      setOutput("result", result);
+    },
+  });
+
+  registry.register("math/Divide", {
+    title: "Divide",
+    size: { w: 140, h: 80 },
+    inputs: [
+      { name: "a", datatype: "number" },
+      { name: "b", datatype: "number" },
+    ],
+    outputs: [{ name: "result", datatype: "number" }],
+    onExecute(node, { getInput, setOutput }) {
+      const a = getInput("a") ?? 0;
+      const b = getInput("b") ?? 1;
+      setOutput("result", b !== 0 ? a / b : 0);
+    },
+  });
+
+  // ===== LOGIC NODES =====
+  registry.register("logic/AND", {
+    title: "AND",
+    size: { w: 120, h: 100 },
+    inputs: [
+      { name: "exec", portType: "exec" },
+      { name: "a", portType: "data", datatype: "boolean" },
+      { name: "b", portType: "data", datatype: "boolean" },
+    ],
+    outputs: [
+      { name: "exec", portType: "exec" },
+      { name: "result", portType: "data", datatype: "boolean" },
+    ],
+    onExecute(node, { getInput, setOutput }) {
+      const a = getInput("a") ?? false;
+      const b = getInput("b") ?? false;
+      console.log("[AND] Inputs - a:", a, "b:", b);
+      const result = a && b;
+      console.log("[AND] Result:", result);
+      setOutput("result", result);
+    },
+  });
+
+  registry.register("logic/OR", {
+    title: "OR",
+    size: { w: 120, h: 80 },
+    inputs: [
+      { name: "a", datatype: "boolean" },
+      { name: "b", datatype: "boolean" },
+    ],
+    outputs: [{ name: "result", datatype: "boolean" }],
+    onExecute(node, { getInput, setOutput }) {
+      const a = getInput("a") ?? false;
+      const b = getInput("b") ?? false;
+      setOutput("result", a || b);
+    },
+  });
+
+  registry.register("logic/NOT", {
+    title: "NOT",
+    size: { w: 120, h: 70 },
+    inputs: [{ name: "in", datatype: "boolean" }],
+    outputs: [{ name: "out", datatype: "boolean" }],
+    onExecute(node, { getInput, setOutput }) {
+      const val = getInput("in") ?? false;
+      setOutput("out", !val);
+    },
+  });
+
+  // ===== VALUE NODES =====
+  registry.register("value/Number", {
+    title: "Number",
+    size: { w: 140, h: 60 },
+    outputs: [{ name: "value", portType: "data", datatype: "number" }],
+    onCreate(node) {
+      node.state.value = 0;
+    },
+    onExecute(node, { setOutput }) {
+      console.log("[Number] Outputting value:", node.state.value ?? 0);
+      setOutput("value", node.state.value ?? 0);
+    },
+    html: {
+      init(node, el, { header, body }) {
+        el.style.backgroundColor = "#1e1e24";
+        el.style.border = "1px solid #444";
+        el.style.borderRadius = "8px";
+
+        header.style.backgroundColor = "#2a2a31";
+        header.style.borderBottom = "1px solid #444";
+        header.style.color = "#eee";
+        header.style.fontSize = "12px";
+        header.textContent = "Number";
+
+        body.style.padding = "12px";
+        body.style.display = "flex";
+        body.style.alignItems = "center";
+        body.style.justifyContent = "center";
+
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = node.state.value ?? 0;
+        Object.assign(input.style, {
+          width: "100%",
+          padding: "6px",
+          background: "#141417",
+          border: "1px solid #444",
+          borderRadius: "4px",
+          color: "#fff",
+          fontSize: "14px",
+          textAlign: "center",
+          pointerEvents: "auto",
+        });
+
+        input.addEventListener("change", (e) => {
+          node.state.value = parseFloat(e.target.value) || 0;
+        });
+
+        input.addEventListener("mousedown", (e) => e.stopPropagation());
+        input.addEventListener("keydown", (e) => e.stopPropagation());
+
+        body.appendChild(input);
+      },
+      update(node, el, { header, body, selected }) {
+        el.style.borderColor = selected ? "#6cf" : "#444";
+        header.style.backgroundColor = selected ? "#3a4a5a" : "#2a2a31";
+      },
+    },
+    onDraw(node, { ctx, theme }) {
+      const { x, y } = node.computed;
+      ctx.fillStyle = "#8f8";
+      ctx.font = "14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(String(node.state.value ?? 0), x + 70, y + 42);
+    },
+  });
+
+  registry.register("value/String", {
+    title: "String",
+    size: { w: 160, h: 60 },
+    outputs: [{ name: "value", datatype: "string" }],
+    onCreate(node) {
+      node.state.value = "Hello";
+    },
+    onExecute(node, { setOutput }) {
+      setOutput("value", node.state.value ?? "");
+    },
+    onDraw(node, { ctx, theme }) {
+      const { x, y } = node.computed;
+      ctx.fillStyle = "#8f8";
+      ctx.font = "12px sans-serif";
+      ctx.textAlign = "center";
+      const text = String(node.state.value ?? "");
+      const displayText = text.length > 15 ? text.substring(0, 15) + "..." : text;
+      ctx.fillText(displayText, x + 80, y + 42);
+    },
+  });
+
+  registry.register("value/Boolean", {
+    title: "Boolean",
+    size: { w: 140, h: 60 },
+    outputs: [{ name: "value", portType: "data", datatype: "boolean" }],
+    onCreate(node) {
+      node.state.value = true;
+    },
+    onExecute(node, { setOutput }) {
+      console.log("[Boolean] Outputting value:", node.state.value ?? false);
+      setOutput("value", node.state.value ?? false);
+    },
+    onDraw(node, { ctx, theme }) {
+      const { x, y } = node.computed;
+      ctx.fillStyle = node.state.value ? "#8f8" : "#f88";
+      ctx.font = "14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(String(node.state.value), x + 70, y + 42);
+    },
+  });
+
+  // ===== UTILITY NODES =====
+  registry.register("util/Print", {
+    title: "Print",
+    size: { w: 140, h: 80 },
+    inputs: [
+      { name: "exec", portType: "exec" },
+      { name: "value", portType: "data", datatype: "any" },
+    ],
+    onCreate(node) {
+      node.state.lastValue = null;
+    },
+    onExecute(node, { getInput }) {
+      const val = getInput("value");
+      if (val !== node.state.lastValue) {
+        console.log("[Print]", val);
+        node.state.lastValue = val;
+      }
+    },
+  });
+
+  registry.register("util/Watch", {
+    title: "Watch",
+    size: { w: 180, h: 110 },
+    inputs: [
+      { name: "exec", portType: "exec" },
+      { name: "value", portType: "data", datatype: "any" },
+    ],
+    outputs: [
+      { name: "exec", portType: "exec" },
+      { name: "value", portType: "data", datatype: "any" },
+    ],
+    onCreate(node) {
+      node.state.displayValue = "---";
+    },
+    onExecute(node, { getInput, setOutput }) {
+      const val = getInput("value");
+      console.log("[Watch] onExecute called, value:", val);
+      node.state.displayValue = String(val ?? "---");
+      setOutput("value", val);
+    },
+    onDraw(node, { ctx, theme }) {
+      const { x, y } = node.computed;
+      ctx.fillStyle = "#fa3";
+      ctx.font = "11px monospace";
+      ctx.textAlign = "left";
+      const text = String(node.state.displayValue ?? "---");
+      const displayText = text.length > 20 ? text.substring(0, 20) + "..." : text;
+      ctx.fillText(displayText, x + 8, y + 50);
+    },
+  });
+
+  registry.register("util/Timer", {
+    title: "Timer",
+    size: { w: 140, h: 60 },
+    outputs: [{ name: "time", datatype: "number" }],
+    onCreate(node) {
+      node.state.startTime = performance.now();
+    },
+    onExecute(node, { setOutput }) {
+      const elapsed = (performance.now() - (node.state.startTime ?? 0)) / 1000;
+      setOutput("time", elapsed.toFixed(2));
+    },
+  });
+
+  // Trigger Node with Button (HTML Overlay)
+  registry.register("util/Trigger", {
+    title: "Trigger",
+    size: { w: 140, h: 80 },
+    outputs: [{ name: "exec", portType: "exec" }], // Changed to exec port
+
+    html: {
+      init(node, el, { header, body }) {
+        el.style.backgroundColor = "#1e1e24";
+        el.style.border = "1px solid #444";
+        el.style.borderRadius = "8px";
+
+        header.style.backgroundColor = "#2a2a31";
+        header.style.borderBottom = "1px solid #444";
+        header.style.color = "#eee";
+        header.style.fontSize = "12px";
+        header.textContent = "Trigger";
+
+        body.style.padding = "12px";
+        body.style.display = "flex";
+        body.style.alignItems = "center";
+        body.style.justifyContent = "center";
+
+        const button = document.createElement("button");
+        button.textContent = "Fire!";
+        Object.assign(button.style, {
+          padding: "8px 16px",
+          background: "#4a9eff",
+          border: "none",
+          borderRadius: "4px",
+          color: "#fff",
+          fontWeight: "bold",
+          cursor: "pointer",
+          pointerEvents: "auto",
+          transition: "background 0.2s",
+        });
+
+        button.addEventListener("mousedown", (e) => {
+          e.stopPropagation();
+          button.style.background = "#2a7ede";
+        });
+
+        button.addEventListener("mouseup", () => {
+          button.style.background = "#4a9eff";
+        });
+
+        button.addEventListener("click", (e) => {
+          e.stopPropagation();
+          node.state.triggered = true;
+          console.log("[Trigger] Button clicked!");
+
+          // Use runner.runOnce for connected node execution
+          if (node.__runnerRef && node.__controllerRef) {
+            console.log("[Trigger] Runner and controller found");
+            const runner = node.__runnerRef;
+            const controller = node.__controllerRef;
+            const graph = controller.graph;
+            console.log("[Trigger] Calling runner.runOnce with node.id:", node.id);
+
+            // Execute connected nodes using runner
+            const result = runner.runOnce(node.id, 0);
+            const connectedEdges = result.connectedEdges;
+
+
+
+            // Show animation with manual rendering
+            const startTime = performance.now();
+            const animationDuration = 500;
+
+            const animate = () => {
+              const elapsed = performance.now() - startTime;
+              if (elapsed < animationDuration) {
+                controller.renderer.draw(graph, {
+                  selection: controller.selection,
+                  tempEdge: null,
+                  running: true,
+                  time: performance.now(),
+                  dt: 0,
+                  activeEdges: connectedEdges, // Only animate connected edges
+                });
+                controller.htmlOverlay?.draw(graph, controller.selection);
+                requestAnimationFrame(animate);
+              } else {
+                controller.render();
+                node.state.triggered = false;
+              }
+            };
+
+            animate();
+          }
+        });
+
+        body.appendChild(button);
+      },
+
+      update(node, el, { header, body, selected }) {
+        el.style.borderColor = selected ? "#6cf" : "#444";
+        header.style.backgroundColor = selected ? "#3a4a5a" : "#2a2a31";
+      },
+    },
+
+    onCreate(node) {
+      node.state.triggered = false;
+    },
+
+    onExecute(node, { setOutput }) {
+      console.log("[Trigger] Outputting triggered:", node.state.triggered);
+      setOutput("triggered", node.state.triggered);
+    },
+  });
+
   // Group Node
   registry.register("core/Group", {
     title: "Group",
     size: { w: 240, h: 160 },
     onDraw(node, { ctx, theme }) {
       const { x, y, w, h } = node.computed;
-      const headerH = 22;
+      const headerH = 24;
       const color = node.state.color || "#39424e";
       const bgAlpha = 0.5;
       const textColor = theme.text || "#e9e9ef";
@@ -385,24 +875,24 @@ export function createGraphEditor(
       roundRect(ctx, x, y, w, h, 10);
       ctx.fill();
 
-      // Header
-      ctx.fillStyle = color;
+      // Header bar (subtle)
+      ctx.fillStyle = rgba(color, 0.3);
       ctx.beginPath();
-      ctx.roundRect(x, y, w, headerH + 6, [10, 10, 0, 0]);
+      ctx.roundRect(x, y, w, headerH, [10, 10, 0, 0]);
       ctx.fill();
 
-      // Title
+      // Title - top left with better styling
       ctx.fillStyle = textColor;
-      ctx.font = "12px system-ui";
-      ctx.textBaseline = "middle";
-      ctx.fillText(node.title, x + 10, y + headerH / 2);
+      ctx.font = "600 13px system-ui";
+      ctx.textBaseline = "top";
+      ctx.fillText(node.title, x + 12, y + 6);
     },
   });
 
   /**
-* Setup default context menu items
-* This function can be customized or replaced by users
-*/
+  * Setup default context menu items
+  * This function can be customized or replaced by users
+  */
   function setupDefaultContextMenu(contextMenu, { controller, graph, hooks }) {
     // Add Node submenu (canvas background only)
     const nodeTypes = [];
@@ -421,6 +911,7 @@ export function createGraphEditor(
           });
 
           hooks?.emit("node:updated", node);
+          controller.render(); // Update minimap and canvas
         },
       });
     }
@@ -486,13 +977,24 @@ export function createGraphEditor(
 
   // initial render & resize
   renderer.resize(canvas.clientWidth, canvas.clientHeight);
+  portRenderer.resize(canvas.clientWidth, canvas.clientHeight);
   controller.render();
 
   const ro = new ResizeObserver(() => {
     renderer.resize(canvas.clientWidth, canvas.clientHeight);
+    portRenderer.resize(canvas.clientWidth, canvas.clientHeight);
     controller.render();
   });
   ro.observe(canvas);
+
+  // Wrap controller.render to update minimap
+  const originalRender = controller.render.bind(controller);
+  controller.render = function () {
+    originalRender();
+    if (minimap) {
+      minimap.render();
+    }
+  };
 
   const api = {
     addGroup: (args = {}) => {
@@ -501,7 +1003,14 @@ export function createGraphEditor(
     },
     graph,
     renderer,
+    controller, // Expose controller for snap-to-grid access
+    runner, // Expose runner for trigger
+    minimap, // Expose minimap
     contextMenu,
+    hooks, // Expose hooks for event handling
+    registry, // Expose registry for node types
+    htmlOverlay, // Expose htmlOverlay for clearing/resetting
+    propertyPanel, // Expose propertyPanel
     render: () => controller.render(),
     start: () => runner.start(),
     stop: () => runner.stop(),
@@ -511,6 +1020,8 @@ export function createGraphEditor(
       controller.destroy();
       htmlOverlay.destroy();
       contextMenu.destroy();
+      if (propertyPanel) propertyPanel.destroy();
+      if (minimap) minimap.destroy();
     },
   };
 

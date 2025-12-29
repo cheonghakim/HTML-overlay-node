@@ -5,14 +5,16 @@ Thank you for your interest in contributing to Free Node! This document provides
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js 18+ and npm
 - Git
 
 ### Setup
+
 ```bash
 # Clone the repository
-git clone https://github.com/cheonghakim/free-node.git
-cd free-node
+git clone https://github.com/cheonghakim/html-overlay-node.git
+cd html-overlay-node
 
 # Install dependencies
 npm install
@@ -27,7 +29,9 @@ npm test
 ## Development Workflow
 
 ### Code Style
+
 We use ESLint and Prettier to maintain code quality:
+
 ```bash
 # Check linting
 npm run lint
@@ -40,6 +44,7 @@ npm run format
 ```
 
 ### Testing
+
 - Write tests for all new features
 - Ensure existing tests pass before submitting PR
 - Aim for high test coverage
@@ -56,15 +61,18 @@ npm run test:coverage
 ```
 
 ### Building
+
 ```bash
 # Build the library
 npm run build
 ```
+
 This creates UMD and ES module builds in the `dist/` directory.
 
 ## Pull Request Process
 
 1. **Fork the repository** and create your branch from `main`
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -75,6 +83,7 @@ This creates UMD and ES module builds in the `dist/` directory.
    - Update documentation as needed
 
 3. **Test your changes**
+
    ```bash
    npm run lint
    npm test
@@ -85,8 +94,9 @@ This creates UMD and ES module builds in the `dist/` directory.
    - Use clear, descriptive commit messages
    - Follow the format: `type: description`
    - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-   
+
    Examples:
+
    ```
    feat: add custom node validation
    fix: resolve edge connection issue
@@ -100,6 +110,7 @@ This creates UMD and ES module builds in the `dist/` directory.
 ## Reporting Bugs
 
 When reporting bugs, please include:
+
 - Clear, descriptive title
 - Steps to reproduce
 - Expected behavior
@@ -107,11 +118,12 @@ When reporting bugs, please include:
 - Browser/Node.js version
 - Code sample (if applicable)
 
-Use the GitHub issue tracker: https://github.com/cheonghakim/free-node/issues
+Use the GitHub issue tracker: https://github.com/cheonghakim/html-overlay-node/issues
 
 ## Feature Requests
 
 We welcome feature requests! Please:
+
 - Check if the feature has already been requested
 - Provide clear use case and rationale
 - Be open to discussion and alternatives
@@ -119,12 +131,14 @@ We welcome feature requests! Please:
 ## Code of Conduct
 
 ### Our Standards
+
 - Be respectful and inclusive
 - Welcome newcomers
 - Focus on constructive feedback
 - Acknowledge contributions
 
 ### Unacceptable Behavior
+
 - Harassment or discriminatory language
 - Trolling or inflammatory comments
 - Personal attacks

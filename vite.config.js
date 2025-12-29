@@ -4,8 +4,8 @@ export default defineConfig({
   build: {
     lib: {
       entry: "src/index.js",
-      name: "FreeNode",
-      fileName: (format) => `free-node.${format}.js`,
+      name: "HTMLOverlayNode",
+      fileName: (format) => `html-overlay-node.${format}.js`,
     },
     sourcemap: true,
     minify: "terser",

@@ -58,8 +58,8 @@ export class Graph {
       height: def.size?.h,
       ...opts,
     });
-    for (const i of def.inputs || []) node.addInput(i.name, i.datatype);
-    for (const o of def.outputs || []) node.addOutput(o.name, o.datatype);
+    for (const i of def.inputs || []) node.addInput(i.name, i.datatype, i.portType || "data");
+    for (const o of def.outputs || []) node.addOutput(o.name, o.datatype, o.portType || "data");
     def.onCreate?.(node);
     this.nodes.set(node.id, node);
     this.hooks?.emit("node:create", node);
@@ -157,7 +157,7 @@ export class Graph {
       node.pos.x = wx;
       node.pos.y = wy;
     }
-    
+
     this.updateWorldTransforms();
   }
 
@@ -175,15 +175,21 @@ export class Graph {
   }
   // data helpers
   setOutput(nodeId, portId, value) {
-    this._nextBuf().set(`${nodeId}:${portId}`, value);
+    console.log(`[Graph.setOutput] nodeId: ${nodeId}, portId: ${portId}, value:`, value);
+    const key = `${nodeId}:${portId}`;
+    this._nextBuf().set(key, value);
   }
   getInput(nodeId, portId) {
-    // find upstream edge feeding this input
-    for (const e of this.edges.values()) {
-      if (e.toNode === nodeId && e.toPort === portId) {
-        return this._curBuf().get(`${e.fromNode}:${e.fromPort}`);
+    // Find incoming edge to this port
+    for (const edge of this.edges.values()) {
+      if (edge.toNode === nodeId && edge.toPort === portId) {
+        const key = `${edge.fromNode}:${edge.fromPort}`;
+        const value = this._curBuf().get(key);
+        console.log(`[Graph.getInput] nodeId: ${nodeId}, portId: ${portId}, reading from ${edge.fromNode}:${edge.fromPort}, value:`, value);
+        return value;
       }
     }
+    console.log(`[Graph.getInput] nodeId: ${nodeId}, portId: ${portId}, no edge found, returning undefined`);
     return undefined;
   }
   toJSON() {
@@ -199,6 +205,7 @@ export class Graph {
         inputs: n.inputs,
         outputs: n.outputs,
         state: n.state,
+        parentId: n.parent?.id || null, // Save parent relationship
       })),
       edges: [...this.edges.values()],
     };
@@ -207,6 +214,8 @@ export class Graph {
   }
   fromJSON(json) {
     this.clear();
+
+    // Restore nodes first
     for (const nd of json.nodes) {
       const node = new Node({
         id: nd.id,
@@ -217,12 +226,42 @@ export class Graph {
         width: nd.w,
         height: nd.h,
       });
+      // Call onCreate to initialize node with defaults first
+      const def = this.registry?.types?.get(nd.type);
+      if (def?.onCreate) {
+        def.onCreate(node);
+      }
+
       node.inputs = nd.inputs;
       node.outputs = nd.outputs;
-      node.state = nd.state || {};
+      // Merge loaded state over defaults
+      node.state = { ...node.state, ...(nd.state || {}) };
+
       this.nodes.set(node.id, node);
     }
-    for (const ed of json.edges) this.edges.set(ed.id, new Edge(ed));
+
+    // Restore parent-child relationships
+    for (const nd of json.nodes) {
+      if (nd.parentId) {
+        const node = this.nodes.get(nd.id);
+        const parent = this.nodes.get(nd.parentId);
+        if (node && parent) {
+          node.parent = parent;
+          parent.children.add(node);
+        }
+      }
+    }
+
+    // Restore edges
+    for (const ed of json.edges) {
+      this.edges.set(ed.id, new Edge(ed));
+    }
+
+    // Update world transforms to calculate proper positions
+    this.updateWorldTransforms();
+
+    this.hooks?.emit("graph:deserialize", json);
+
     return this;
   }
 }

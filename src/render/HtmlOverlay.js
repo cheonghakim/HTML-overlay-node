@@ -146,9 +146,16 @@ export class HtmlOverlay {
     }
   }
 
-  destroy() {
-    for (const [, el] of this.nodes) el.remove();
+  clear() {
+    // Remove all node elements
+    for (const [, el] of this.nodes) {
+      el.remove();
+    }
     this.nodes.clear();
+  }
+
+  destroy() {
+    this.clear();
     this.container.remove();
   }
 }
