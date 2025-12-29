@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/",
+  base: "/HTML-overlay-node/",
   build: {
     lib: {
       entry: "src/index.js",
