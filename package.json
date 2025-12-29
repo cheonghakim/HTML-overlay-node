@@ -42,7 +42,7 @@
     "visual-scripting"
   ],
   "author": "cheonghakim",
-  "license": "ISC",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/cheonghakim/html-overlay-node.git"

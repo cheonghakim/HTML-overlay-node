@@ -1,8 +1,7 @@
 # HTML-overlay-Node
 
-[![CI](https://github.com/cheonghakim/html-overlay-node/workflows/CI/badge.svg)](https://github.com/cheonghakim/html-overlay-node/actions)
 [![npm version](https://img.shields.io/npm/v/html-overlay-node.svg)](https://www.npmjs.com/package/html-overlay-node)
-[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 **HTML-overlay-Node** is a customizable, LiteGraph-style node editor library for building visual programming interfaces. It uses **Canvas rendering** for fast performance and supports node type registration, execution cycle control, custom drawing, HTML overlays, and group management.
 
@@ -25,6 +24,10 @@
 - 🎥 **Visual feedback** - Smooth animations and hover states
 
 ---
+
+## Demo
+
+- 🏠 [Demo](https://cheonghakim.github.io/HTML-overlay-node/)
 
 ## 🚀 Quick Start
 
