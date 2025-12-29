@@ -1,6 +1,6 @@
 {
   "name": "html-overlay-node",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A customizable, LiteGraph-style node editor library with canvas rendering, HTML overlays, and flexible execution control",
   "main": "dist/html-overlay-node.umd.js",
   "module": "dist/html-overlay-node.es.js",
