@@ -39,25 +39,35 @@ const editor = createGraphEditor("#editor-container", {
 });
 
 const { graph, registry, addGroup, start } = editor;
+```
+
+### 💅 Styles (Required)
+
+Make sure to import the necessary CSS files for the editor and Property Panel to look correctly:
+
+```javascript
+import "html-overlay-node/index.css";
+import "html-overlay-node/src/ui/PropertyPanel.css";
+```
 
 // Register and add nodes
 registry.register("math/Add", {
-  title: "Add",
-  size: { w: 180, h: 80 },
-  inputs: [
-    { name: "a", datatype: "number" },
-    { name: "b", datatype: "number" },
-  ],
-  outputs: [{ name: "result", datatype: "number" }],
-  onCreate(node) {
-    node.state.a = 0;
-    node.state.b = 0;
-  },
-  onExecute(node, { getInput, setOutput }) {
-    const a = getInput("a") ?? node.state.a;
-    const b = getInput("b") ?? node.state.b;
-    setOutput("result", a + b);
-  },
+title: "Add",
+size: { w: 180, h: 80 },
+inputs: [
+{ name: "a", datatype: "number" },
+{ name: "b", datatype: "number" },
+],
+outputs: [{ name: "result", datatype: "number" }],
+onCreate(node) {
+node.state.a = 0;
+node.state.b = 0;
+},
+onExecute(node, { getInput, setOutput }) {
+const a = getInput("a") ?? node.state.a;
+const b = getInput("b") ?? node.state.b;
+setOutput("result", a + b);
+},
 });
 
 // Add nodes
@@ -66,17 +76,18 @@ const node2 = graph.addNode("math/Add", { x: 100, y: 200 });
 
 // Create a group
 addGroup({
-  title: "Math Operations",
-  x: 50,
-  y: 50,
-  width: 300,
-  height: 300,
-  color: "#4a5568",
-  members: [node1.id, node2.id],
+title: "Math Operations",
+x: 50,
+y: 50,
+width: 300,
+height: 300,
+color: "#4a5568",
+members: [node1.id, node2.id],
 });
 
 start();
-```
+
+````
 
 ---
 
@@ -99,7 +110,7 @@ const group = addGroup({
   color: "#2d3748", // Background color
   members: [node1.id, node2.id], // Nodes to include
 });
-```
+````
 
 ### Group Features
 
