@@ -150,4 +150,4 @@ Feel free to open an issue with the `question` label or reach out to the maintai
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the ISC License.
+By contributing, you agree that your contributions will be licensed under the MIT License.
