@@ -221,7 +221,7 @@ describe("Graph", () => {
 
   describe("serialization", () => {
     it("should serialize graph to JSON", () => {
-      const node = graph.addNode("test/node", { x: 100, y: 200 });
+      const _node = graph.addNode("test/node", { x: 100, y: 200 });
       const json = graph.toJSON();
 
       expect(json.nodes).toBeInstanceOf(Array);
@@ -235,7 +235,7 @@ describe("Graph", () => {
     it("should deserialize graph from JSON", () => {
       const node1 = graph.addNode("test/node", { x: 100, y: 200 });
       const node2 = graph.addNode("test/node", { x: 300, y: 400 });
-      const edge = graph.addEdge(
+      const _edge = graph.addEdge(
         node1.id,
         node1.outputs[0].id,
         node2.id,

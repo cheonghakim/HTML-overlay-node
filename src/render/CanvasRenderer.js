@@ -1,4 +1,4 @@
-import { hitTestNode, portRect } from "./hitTest.js";
+import { portRect } from "./hitTest.js";
 
 export class CanvasRenderer {
   static FONT_SIZE = 12;
@@ -542,8 +542,6 @@ export class CanvasRenderer {
   }
 
   _drawOrthogonal(x1, y1, x2, y2) {
-    const dx = Math.abs(x2 - x1);
-    const dy = Math.abs(y2 - y1);
     // 중간 축을 결정 (더 짧은 축을 가운데에 두면 보기 좋음)
     const useHVH = true; // 가로-세로-가로(HVH) vs 세로-가로-세로(VHV)
     const midX = (x1 + x2) / 2;

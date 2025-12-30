@@ -1,9 +1,7 @@
-import { hitTestNode, portRect } from "../render/hitTest.js";
+import { portRect } from "../render/hitTest.js";
 import {
-  MoveNodeCmd,
   AddEdgeCmd,
   RemoveEdgeCmd,
-  CompoundCmd,
   RemoveNodeCmd,
   ResizeNodeCmd,
 } from "../core/commands.js";
@@ -456,8 +454,8 @@ export class Controller {
           continue;
         }
 
-        let newWorldX = startWorldX + deltaX;
-        let newWorldY = startWorldY + deltaY;
+        const newWorldX = startWorldX + deltaX;
+        const newWorldY = startWorldY + deltaY;
 
         // Convert to local position
         let parentWx = 0;
