@@ -1,22 +1,19 @@
-name: CI & Deploy
+name: CI
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
 
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,33 +22,26 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "npm"
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run linter & tests
-        run: |
-          npm run lint
-          npm test
+      - name: Run linter
+        run: npm run lint
 
-      - name: Build Demo
+      - name: Run tests
+        run: npm test
+
+      - name: Build demo
         run: npm run build
         env:
           BUILD_DEMO: true
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      # 선택 사항: 빌드 결과를 그냥 참고용으로만 artifact로 남기고 싶으면 둬도 됨
+      - name: Upload build artifact
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
+          name: dist
           path: ./dist
-
-  deploy:
-    needs: test-and-build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
