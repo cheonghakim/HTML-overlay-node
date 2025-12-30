@@ -1,20 +1,20 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/html-overlay-node/",
+  base: "/HTML-overlay-node/",
   build: process.env.BUILD_DEMO
     ? {
-        outDir: "dist",
-      }
+      outDir: "dist",
+    }
     : {
-        lib: {
-          entry: "src/index.js",
-          name: "HTMLOverlayNode",
-          fileName: (format) => `html-overlay-node.${format}.js`,
-        },
-        sourcemap: true,
-        minify: "terser",
+      lib: {
+        entry: "src/index.js",
+        name: "HTMLOverlayNode",
+        fileName: (format) => `html-overlay-node.${format}.js`,
       },
+      sourcemap: true,
+      minify: "terser",
+    },
   test: {
     globals: true,
     environment: "jsdom",
