@@ -81,7 +81,6 @@ export class PropertyPanel {
     if (!node) return;
 
     const content = this.panel.querySelector('.panel-content');
-    const def = this.registry?.types?.get(node.type);
 
     content.innerHTML = `
       <div class="section">

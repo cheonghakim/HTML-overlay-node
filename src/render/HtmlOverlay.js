@@ -24,7 +24,7 @@ export class HtmlOverlay {
   }
 
   /** 기본 노드 레이아웃 생성 (헤더 + 바디) */
-  _createDefaultNodeLayout(node) {
+  _createDefaultNodeLayout(_node) {
     const container = document.createElement("div");
     container.className = "node-overlay";
     Object.assign(container.style, {
@@ -55,7 +55,7 @@ export class HtmlOverlay {
       flex: "1",
       position: "relative",
       overflow: "hidden",
-      pointerEvents: "auto", // 바디 내부는 인터랙션 가능하게? 아니면 이것도 none하고 자식만 auto?
+      // 바디 내부는 인터랙션 가능하게? 아니면 이것도 none하고 자식만 auto?
       // 일단 바디는 auto로 두면 바디 영역 클릭시 드래그가 안됨.
       // 그래서 바디도 none으로 하고, 내부 컨텐츠(input 등)만 auto로 하는게 맞음.
       pointerEvents: "none",
