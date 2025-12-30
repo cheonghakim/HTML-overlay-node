@@ -263,7 +263,7 @@ export function createGraphEditor(
       },
 
       // 매 프레임(또는 필요시) 업데이트
-      update(node, el, { header, body, selected }) {
+      update(node, el, { header, _body, selected }) {
         el.style.borderColor = selected ? "#6cf" : "#444";
         header.style.backgroundColor = selected ? "#3a4a5a" : "#333";
 
