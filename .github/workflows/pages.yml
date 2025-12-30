@@ -32,7 +32,9 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build # lint 없음
+        run: npm run build
+        env:
+          BUILD_DEMO: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
