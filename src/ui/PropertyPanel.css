@@ -77,11 +77,11 @@
 }
 
 .panel-content {
-  flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 6px;
   min-height: 0;
+  height: 88%;
 }
 
 /* Scrollbar */
