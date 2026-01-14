@@ -2,9 +2,9 @@ export function randomUUID() {
   // 1) 전역 객체 안전 획득
   const g =
     typeof globalThis !== "undefined" ? globalThis :
-    typeof self !== "undefined" ? self :
-    typeof window !== "undefined" ? window :
-    typeof global !== "undefined" ? global : {};
+      typeof self !== "undefined" ? self :
+        typeof window !== "undefined" ? window :
+          typeof global !== "undefined" ? global : {};
 
   const c = g.crypto || g.msCrypto; // IE11 호환
 
@@ -34,7 +34,7 @@ export function randomUUID() {
   // 4) Node.js 전용 대체 (require가 있을 때)
   try {
     // 번들러/ESM 충돌 피하려고 런타임에만 require 접근
-     
+
     const req = Function('return typeof require === "function" ? require : null')();
     if (req) {
       const nodeCrypto = req("crypto");

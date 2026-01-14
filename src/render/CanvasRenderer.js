@@ -20,26 +20,25 @@ export class CanvasRenderer {
 
     this.theme = Object.assign(
       {
-        bg: "#0d0d0f",           // Darker background
-        grid: "#1a1a1d",         // Subtle grid
-        node: "#16161a",         // Darker nodes
-        nodeBorder: "#2a2a2f",   // Subtle border
-        title: "#1f1f24",        // Darker header
-        text: "#e4e4e7",         // Softer white
-        textMuted: "#a1a1aa",    // Muted text
-        port: "#6366f1",         // Indigo for data ports
-        portExec: "#10b981",     // Emerald for exec ports
-        edge: "#52525b",         // Neutral edge color
-        edgeActive: "#8b5cf6",   // Purple for active
-        accent: "#6366f1",       // Indigo accent
+        bg: "#0d0d0f", // Darker background
+        grid: "#1a1a1d", // Subtle grid
+        node: "#16161a", // Darker nodes
+        nodeBorder: "#2a2a2f", // Subtle border
+        title: "#1f1f24", // Darker header
+        text: "#e4e4e7", // Softer white
+        textMuted: "#a1a1aa", // Muted text
+        port: "#6366f1", // Indigo for data ports
+        portExec: "#10b981", // Emerald for exec ports
+        edge: "#52525b", // Neutral edge color
+        edgeActive: "#8b5cf6", // Purple for active
+        accent: "#6366f1", // Indigo accent
         accentBright: "#818cf8", // Brighter accent
       },
       theme
     );
   }
   setEdgeStyle(style) {
-    this.edgeStyle =
-      style === "line" || style === "orthogonal" ? style : "bezier";
+    this.edgeStyle = style === "line" || style === "orthogonal" ? style : "bezier";
   }
   setRegistry(reg) {
     this.registry = reg;
@@ -48,26 +47,31 @@ export class CanvasRenderer {
     this.canvas.width = w;
     this.canvas.height = h;
   }
-  setTransform({
-    scale = this.scale,
-    offsetX = this.offsetX,
-    offsetY = this.offsetY,
-  } = {}) {
+  setTransform({ scale = this.scale, offsetX = this.offsetX, offsetY = this.offsetY } = {}) {
     this.scale = Math.min(this.maxScale, Math.max(this.minScale, scale));
     this.offsetX = offsetX;
     this.offsetY = offsetY;
+    // Trigger callback to sync HTML overlay transform
+    this._onTransformChange?.();
+  }
+
+  /**
+   * Set callback to be called when transform changes (zoom/pan)
+   * @param {Function} callback - Function to call on transform change
+   */
+  setTransformChangeCallback(callback) {
+    this._onTransformChange = callback;
   }
   panBy(dx, dy) {
     this.offsetX += dx;
     this.offsetY += dy;
+    // Trigger callback to sync HTML overlay transform
+    this._onTransformChange?.();
   }
   zoomAt(factor, cx, cy) {
     // factor > 1 zoom in, < 1 zoom out, centered at screen point (cx, cy)
     const prev = this.scale;
-    const next = Math.min(
-      this.maxScale,
-      Math.max(this.minScale, prev * factor)
-    );
+    const next = Math.min(this.maxScale, Math.max(this.minScale, prev * factor));
     if (next === prev) return;
     // keep the world point under cursor fixed: adjust offset
     const wx = (cx - this.offsetX) / prev;
@@ -75,6 +79,8 @@ export class CanvasRenderer {
     this.offsetX = cx - wx * next;
     this.offsetY = cy - wy * next;
     this.scale = next;
+    // Trigger callback to sync HTML overlay transform
+    this._onTransformChange?.();
   }
 
   screenToWorld(x, y) {
@@ -91,7 +97,10 @@ export class CanvasRenderer {
   }
   _applyTransform() {
     const { ctx } = this;
-    ctx.setTransform(this.scale, 0, 0, this.scale, this.offsetX, this.offsetY);
+    // CRITICAL: Must match HTMLOverlay transformation order (translate then scale)
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset first
+    ctx.translate(this.offsetX, this.offsetY);
+    ctx.scale(this.scale, this.scale);
   }
   _resetTransform() {
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -105,14 +114,8 @@ export class CanvasRenderer {
 
     ctx.beginPath();
     ctx.moveTo(x2, y2);
-    ctx.lineTo(
-      x2 - s * Math.cos(ang - Math.PI / 6),
-      y2 - s * Math.sin(ang - Math.PI / 6)
-    );
-    ctx.lineTo(
-      x2 - s * Math.cos(ang + Math.PI / 6),
-      y2 - s * Math.sin(ang + Math.PI / 6)
-    );
+    ctx.lineTo(x2 - s * Math.cos(ang - Math.PI / 6), y2 - s * Math.sin(ang - Math.PI / 6));
+    ctx.lineTo(x2 - s * Math.cos(ang + Math.PI / 6), y2 - s * Math.sin(ang + Math.PI / 6));
     ctx.closePath();
     ctx.fill(); // 선 색상과 동일한 fill이 자연스러움
   }
@@ -198,6 +201,7 @@ export class CanvasRenderer {
       dt = 0,
       groups = null,
       activeEdges = new Set(),
+      drawEdges = true,
     } = {}
   ) {
     // Update transforms first
@@ -214,44 +218,46 @@ export class CanvasRenderer {
       if (n.type === "core/Group") {
         const sel = selection.has(n.id);
         const def = this.registry?.types?.get(n.type);
-        if (def?.onDraw) def.onDraw(n, { ctx, theme });
+        if (def?.onDraw) def.onDraw(n, { ctx, theme, renderer: this });
         else this._drawNode(n, sel);
       }
     }
 
-    // 2. Draw Edges (BEFORE nodes so ports appear on top)
-    ctx.lineWidth = 1.5 / this.scale; // Thinner, more refined edges
+    // 2. Draw Edges (conditionally - can be skipped for port canvas rendering)
+    if (drawEdges) {
+      ctx.lineWidth = 1.5 / this.scale;
 
-    // Calculate animation values if running
-    let dashArray = null;
-    let dashOffset = 0;
-    if (running) {
-      const speed = 120;
-      const phase = (((time / 1000) * speed) / this.scale) % CanvasRenderer.FONT_SIZE;
-      dashArray = [6 / this.scale, 6 / this.scale];
-      dashOffset = -phase;
-    }
-
-    for (const e of graph.edges.values()) {
-      const shouldAnimate = activeEdges && activeEdges.size > 0 && activeEdges.has(e.id);
-
-      if (running && shouldAnimate && dashArray) {
-        ctx.setLineDash(dashArray);
-        ctx.lineDashOffset = dashOffset;
-      } else {
-        ctx.setLineDash([]);
-        ctx.lineDashOffset = 0;
+      // Calculate animation values if running
+      let dashArray = null;
+      let dashOffset = 0;
+      if (running) {
+        const speed = 120;
+        const phase = (((time / 1000) * speed) / this.scale) % CanvasRenderer.FONT_SIZE;
+        dashArray = [6 / this.scale, 6 / this.scale];
+        dashOffset = -phase;
       }
 
-      const isActive = activeEdges && activeEdges.has(e.id);
-      if (isActive) {
-        ctx.strokeStyle = "#00ffff";
-        ctx.lineWidth = 3 * this.scale;
-      } else {
-        ctx.strokeStyle = theme.edge;
-        ctx.lineWidth = 1.5 / this.scale;
+      for (const e of graph.edges.values()) {
+        const shouldAnimate = activeEdges && activeEdges.size > 0 && activeEdges.has(e.id);
+
+        if (running && shouldAnimate && dashArray) {
+          ctx.setLineDash(dashArray);
+          ctx.lineDashOffset = dashOffset;
+        } else {
+          ctx.setLineDash([]);
+          ctx.lineDashOffset = 0;
+        }
+
+        const isActive = activeEdges && activeEdges.has(e.id);
+        if (isActive) {
+          ctx.strokeStyle = "#00ffff";
+          ctx.lineWidth = 3 / this.scale;
+        } else {
+          ctx.strokeStyle = theme.edge;
+          ctx.lineWidth = 1.5 / this.scale;
+        }
+        this._drawEdge(graph, e);
       }
-      this._drawEdge(graph, e);
     }
 
     // temp edge preview
@@ -265,12 +271,18 @@ export class CanvasRenderer {
       let ptsForArrow = null;
       if (this.edgeStyle === "line") {
         this._drawLine(a.x, a.y, b.x, b.y);
-        ptsForArrow = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
+        ptsForArrow = [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y },
+        ];
       } else if (this.edgeStyle === "orthogonal") {
         ptsForArrow = this._drawOrthogonal(a.x, a.y, b.x, b.y);
       } else {
         this._drawCurve(a.x, a.y, b.x, b.y);
-        ptsForArrow = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
+        ptsForArrow = [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y },
+        ];
       }
 
       this.ctx.setLineDash(prevDash);
@@ -279,22 +291,24 @@ export class CanvasRenderer {
         const p1 = ptsForArrow[ptsForArrow.length - 2];
         const p2 = ptsForArrow[ptsForArrow.length - 1];
         this.ctx.fillStyle = this.theme.edge;
-        this.ctx.strokeStyle = this.theme.edge;
+        this.ctx.strokeStyle = this.theme.edge; // Ensure color is set
         this._drawArrowhead(p1.x, p1.y, p2.x, p2.y, 12);
       }
     }
 
     // 3. Draw Other Nodes (AFTER edges)
-    // For nodes with HTML overlays, skip ports initially
+    // For nodes with HTML overlays, SKIP canvas rendering entirely
     for (const n of graph.nodes.values()) {
       if (n.type !== "core/Group") {
         const sel = selection.has(n.id);
         const def = this.registry?.types?.get(n.type);
-        const hasHtmlOverlay = !!(def?.html);
+        const hasHtmlOverlay = !!def?.html;
 
-        // Draw node, but skip ports if it has HTML overlay
-        this._drawNode(n, sel, hasHtmlOverlay);
-        if (def?.onDraw) def.onDraw(n, { ctx, theme });
+        // Only draw node body on canvas if it DOESN'T have HTML overlay
+        if (!hasHtmlOverlay) {
+          this._drawNode(n, sel, true); // Draw WITHOUT ports (drawn on port canvas)
+          if (def?.onDraw) def.onDraw(n, { ctx, theme, renderer: this });
+        }
       }
     }
 
@@ -302,7 +316,7 @@ export class CanvasRenderer {
     for (const n of graph.nodes.values()) {
       if (n.type !== "core/Group") {
         const def = this.registry?.types?.get(n.type);
-        const hasHtmlOverlay = !!(def?.html);
+        const hasHtmlOverlay = !!def?.html;
 
         if (hasHtmlOverlay) {
           this._drawPorts(n);
@@ -318,9 +332,9 @@ export class CanvasRenderer {
     const n = parseInt(
       c.length === 3
         ? c
-          .split("")
-          .map((x) => x + x)
-          .join("")
+            .split("")
+            .map((x) => x + x)
+            .join("")
         : c,
       16
     );
@@ -511,10 +525,10 @@ export class CanvasRenderer {
     const iIn = to.inputs.findIndex((p) => p.id === e.toPort);
     const pr1 = portRect(from, null, iOut, "out");
     const pr2 = portRect(to, null, iIn, "in");
-    const x1 = pr1.x,
-      y1 = pr1.y + 7,
-      x2 = pr2.x,
-      y2 = pr2.y + 7;
+    const x1 = pr1.x + pr1.w / 2,
+      y1 = pr1.y + pr1.h / 2, // Center of port
+      x2 = pr2.x + pr2.w / 2,
+      y2 = pr2.y + pr2.h / 2; // Center of port
     if (this.edgeStyle === "line") {
       this._drawLine(x1, y1, x2, y2);
     } else if (this.edgeStyle === "orthogonal") {
@@ -536,8 +550,7 @@ export class CanvasRenderer {
     const { ctx } = this;
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++)
-      ctx.lineTo(points[i].x, points[i].y);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
     ctx.stroke();
   }
 
@@ -586,6 +599,93 @@ export class CanvasRenderer {
     ctx.moveTo(x1, y1);
     ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2, y2);
     ctx.stroke();
+  }
+
+  /**
+   * Draw only edges on a separate canvas (for layering above HTML overlay)
+   * @param {Graph} graph - The graph
+   * @param {Object} options - Rendering options
+   */
+  drawEdgesOnly(
+    graph,
+    { activeEdges = new Set(), running = false, time = performance.now(), tempEdge = null } = {}
+  ) {
+    // Clear canvas
+    this._resetTransform();
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    this._applyTransform();
+
+    const { ctx, theme } = this;
+
+    // Calculate animation values
+    let dashArray = null;
+    let dashOffset = 0;
+    if (running || activeEdges.size > 0) {
+      const speed = 120;
+      const phase = (((time / 1000) * speed) / this.scale) % 12;
+      dashArray = [6 / this.scale, 6 / this.scale];
+      dashOffset = -phase;
+    }
+
+    // Draw all edges
+    ctx.lineWidth = 1.5 / this.scale;
+    // Set default edge style
+    ctx.strokeStyle = theme.edge;
+    for (const e of graph.edges.values()) {
+      const isActive = activeEdges && activeEdges.has(e.id);
+
+      if (isActive && dashArray) {
+        ctx.setLineDash(dashArray);
+        ctx.lineDashOffset = dashOffset;
+        ctx.strokeStyle = "#00ffff";
+        ctx.lineWidth = 3 / this.scale;
+      } else {
+        ctx.setLineDash([]);
+        ctx.strokeStyle = theme.edge;
+        ctx.lineWidth = 1.5 / this.scale;
+      }
+
+      this._drawEdge(graph, e);
+    }
+
+    // temp edge preview
+    if (tempEdge) {
+      const a = this.screenToWorld(tempEdge.x1, tempEdge.y1);
+      const b = this.screenToWorld(tempEdge.x2, tempEdge.y2);
+
+      const prevDash = this.ctx.getLineDash();
+      this.ctx.setLineDash([6 / this.scale, 6 / this.scale]);
+
+      let ptsForArrow = null;
+      if (this.edgeStyle === "line") {
+        this._drawLine(a.x, a.y, b.x, b.y);
+        ptsForArrow = [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y },
+        ];
+      } else if (this.edgeStyle === "orthogonal") {
+        ptsForArrow = this._drawOrthogonal(a.x, a.y, b.x, b.y);
+      } else {
+        this._drawCurve(a.x, a.y, b.x, b.y);
+        ptsForArrow = [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y },
+        ];
+      }
+
+      this.ctx.setLineDash(prevDash);
+
+      if (ptsForArrow && ptsForArrow.length >= 2) {
+        const p1 = ptsForArrow[ptsForArrow.length - 2];
+        const p2 = ptsForArrow[ptsForArrow.length - 1];
+        this.ctx.fillStyle = this.theme.edge;
+        this.ctx.strokeStyle = this.theme.edge; // Ensure color is set
+        this._drawArrowhead(p1.x, p1.y, p2.x, p2.y, 12);
+      }
+    }
+
+    this._resetTransform();
   }
 }
 function roundRect(ctx, x, y, w, h, r = 6) {

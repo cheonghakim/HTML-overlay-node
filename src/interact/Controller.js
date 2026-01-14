@@ -1,23 +1,18 @@
 import { portRect } from "../render/hitTest.js";
-import {
-  AddEdgeCmd,
-  RemoveEdgeCmd,
-  RemoveNodeCmd,
-  ResizeNodeCmd,
-} from "../core/commands.js";
+import { AddEdgeCmd, RemoveEdgeCmd, RemoveNodeCmd, ResizeNodeCmd } from "../core/commands.js";
 import { CommandStack } from "../core/CommandStack.js";
 
 export class Controller {
-
   static MIN_NODE_WIDTH = 80;
   static MIN_NODE_HEIGHT = 60;
 
-  constructor({ graph, renderer, hooks, htmlOverlay, contextMenu, portRenderer }) {
+  constructor({ graph, renderer, hooks, htmlOverlay, contextMenu, edgeRenderer, portRenderer }) {
     this.graph = graph;
     this.renderer = renderer;
     this.hooks = hooks;
     this.htmlOverlay = htmlOverlay;
     this.contextMenu = contextMenu;
+    this.edgeRenderer = edgeRenderer; // Separate renderer for edges/animations above HTML
     this.portRenderer = portRenderer; // Separate renderer for ports above HTML
 
     this.stack = new CommandStack();
@@ -207,13 +202,11 @@ export class Controller {
     for (const n of this.graph.nodes.values()) {
       for (let i = 0; i < n.inputs.length; i++) {
         const r = portRect(n, n.inputs[i], i, "in");
-        if (rectHas(r, x, y))
-          return { node: n, port: n.inputs[i], dir: "in", idx: i };
+        if (rectHas(r, x, y)) return { node: n, port: n.inputs[i], dir: "in", idx: i };
       }
       for (let i = 0; i < n.outputs.length; i++) {
         const r = portRect(n, n.outputs[i], i, "out");
-        if (rectHas(r, x, y))
-          return { node: n, port: n.outputs[i], dir: "out", idx: i };
+        if (rectHas(r, x, y)) return { node: n, port: n.outputs[i], dir: "out", idx: i };
       }
     }
     return null;
@@ -441,8 +434,10 @@ export class Controller {
       }
 
       // Calculate delta from original position
-      const deltaX = targetWx - this.dragging.selectedNodes.find(sn => sn.node.id === n.id).startWorldX;
-      const deltaY = targetWy - this.dragging.selectedNodes.find(sn => sn.node.id === n.id).startWorldY;
+      const deltaX =
+        targetWx - this.dragging.selectedNodes.find((sn) => sn.node.id === n.id).startWorldX;
+      const deltaY =
+        targetWy - this.dragging.selectedNodes.find((sn) => sn.node.id === n.id).startWorldY;
 
       // Update world transforms
       this.graph.updateWorldTransforms();
@@ -532,13 +527,7 @@ export class Controller {
       const portIn = this._findPortAtWorld(w.x, w.y);
       if (portIn && portIn.dir === "in") {
         this.stack.exec(
-          AddEdgeCmd(
-            this.graph,
-            from.fromNode,
-            from.fromPort,
-            portIn.node.id,
-            portIn.port.id
-          )
+          AddEdgeCmd(this.graph, from.fromNode, from.fromPort, portIn.node.id, portIn.port.id)
         );
       }
       this.connecting = null;
@@ -694,10 +683,13 @@ export class Controller {
     }
 
     // Get selected nodes
-    const selectedNodes = Array.from(this.selection).map(id => this.graph.getNodeById(id));
+    const selectedNodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
 
     // Calculate bounding box
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     for (const node of selectedNodes) {
       const { x, y, w, h } = node.computed;
       minX = Math.min(minX, x);
@@ -733,7 +725,7 @@ export class Controller {
   _alignNodesHorizontal() {
     if (this.selection.size < 2) return;
 
-    const nodes = Array.from(this.selection).map(id => this.graph.getNodeById(id));
+    const nodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
     const avgY = nodes.reduce((sum, n) => sum + n.computed.y, 0) / nodes.length;
 
     for (const node of nodes) {
@@ -751,7 +743,7 @@ export class Controller {
   _alignNodesVertical() {
     if (this.selection.size < 2) return;
 
-    const nodes = Array.from(this.selection).map(id => this.graph.getNodeById(id));
+    const nodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
     const avgX = nodes.reduce((sum, n) => sum + n.computed.x, 0) / nodes.length;
 
     for (const node of nodes) {
@@ -766,16 +758,37 @@ export class Controller {
   render() {
     const tEdge = this.renderTempEdge();
 
+    // 1. Draw background (grid, canvas-only nodes) on main canvas
     this.renderer.draw(this.graph, {
       selection: this.selection,
-      tempEdge: tEdge,
+      tempEdge: null, // Don't draw temp edge on background
       boxSelecting: this.boxSelecting,
-      activeEdges: this.activeEdges || new Set(), // For animation
+      activeEdges: this.activeEdges || new Set(),
+      drawEdges: !this.edgeRenderer, // Only draw edges here if no separate edge renderer
     });
 
+    // 2. HTML Overlay layer (HTML nodes at z-index 10)
     this.htmlOverlay?.draw(this.graph, this.selection);
 
-    // Draw box selection rectangle on top of everything
+    // 3. Draw edges and animations on edge canvas (above HTML overlay at z-index 15)
+    if (this.edgeRenderer) {
+      const edgeCtx = this.edgeRenderer.ctx;
+      edgeCtx.clearRect(0, 0, this.edgeRenderer.canvas.width, this.edgeRenderer.canvas.height);
+
+      // Edges use shared transform (via property getters)
+      this.edgeRenderer._applyTransform();
+
+      this.edgeRenderer.drawEdgesOnly(this.graph, {
+        activeEdges: this.activeEdges || new Set(),
+        running: false,
+        time: performance.now(),
+        tempEdge: tEdge, // Draw temp edge on edge layer
+      });
+
+      this.edgeRenderer._resetTransform();
+    }
+
+    // 4. Draw box selection rectangle on top of edges
     if (this.boxSelecting) {
       const { startX, startY, currentX, currentY } = this.boxSelecting;
       const minX = Math.min(startX, currentX);
@@ -786,23 +799,36 @@ export class Controller {
       const screenStart = this.renderer.worldToScreen(minX, minY);
       const screenEnd = this.renderer.worldToScreen(minX + width, minY + height);
 
-      const ctx = this.renderer.ctx;
+      const ctx = this.edgeRenderer ? this.edgeRenderer.ctx : this.renderer.ctx;
       ctx.save();
-      this.renderer._resetTransform();
+      if (this.edgeRenderer) {
+        this.edgeRenderer._resetTransform();
+      } else {
+        this.renderer._resetTransform();
+      }
 
       // Draw selection box
       ctx.strokeStyle = "#6cf";
       ctx.fillStyle = "rgba(102, 204, 255, 0.1)";
       ctx.lineWidth = 2;
-      ctx.strokeRect(screenStart.x, screenStart.y, screenEnd.x - screenStart.x, screenEnd.y - screenStart.y);
-      ctx.fillRect(screenStart.x, screenStart.y, screenEnd.x - screenStart.x, screenEnd.y - screenStart.y);
+      ctx.strokeRect(
+        screenStart.x,
+        screenStart.y,
+        screenEnd.x - screenStart.x,
+        screenEnd.y - screenStart.y
+      );
+      ctx.fillRect(
+        screenStart.x,
+        screenStart.y,
+        screenEnd.x - screenStart.x,
+        screenEnd.y - screenStart.y
+      );
 
       ctx.restore();
     }
 
-    // Draw ports for HTML overlay nodes on separate canvas (above HTML)
+    // 5. Draw ports on port canvas (above edges at z-index 20)
     if (this.portRenderer) {
-      // Clear port canvas
       const portCtx = this.portRenderer.ctx;
       portCtx.clearRect(0, 0, this.portRenderer.canvas.width, this.portRenderer.canvas.height);
 
@@ -811,16 +837,13 @@ export class Controller {
       this.portRenderer.offsetX = this.renderer.offsetX;
       this.portRenderer.offsetY = this.renderer.offsetY;
 
-      // Draw ports for HTML overlay nodes
       this.portRenderer._applyTransform();
+
+      // Draw ports for HTML overlay nodes only
+      // Draw ports for ALL nodes to ensure they are above edges
       for (const n of this.graph.nodes.values()) {
         if (n.type !== "core/Group") {
-          const def = this.portRenderer.registry?.types?.get(n.type);
-          const hasHtmlOverlay = !!(def?.html);
-
-          if (hasHtmlOverlay) {
-            this.portRenderer._drawPorts(n);
-          }
+          this.portRenderer._drawPorts(n);
         }
       }
       this.portRenderer._resetTransform();
@@ -829,10 +852,7 @@ export class Controller {
 
   renderTempEdge() {
     if (!this.connecting) return null;
-    const a = this._portAnchorScreen(
-      this.connecting.fromNode,
-      this.connecting.fromPort
-    ); // {x,y}
+    const a = this._portAnchorScreen(this.connecting.fromNode, this.connecting.fromPort); // {x,y}
     return {
       x1: a.x,
       y1: a.y,
@@ -845,7 +865,7 @@ export class Controller {
     const n = this.graph.nodes.get(nodeId);
     const iOut = n.outputs.findIndex((p) => p.id === portId);
     const r = portRect(n, null, iOut, "out"); // world rect
-    return this.renderer.worldToScreen(r.x, r.y + 7); // -> screen point
+    return this.renderer.worldToScreen(r.x + r.w / 2, r.y + r.h / 2); // -> screen point (CENTER)
   }
 }
 

@@ -43,28 +43,44 @@ export class Node {
    * @param {string} [portType="data"] - Port type: "exec" or "data"
    * @returns {Object} The created port
    */
+  /**
+   * Recalculate minimum size based on ports
+   */
+  _updateMinSize() {
+    const HEADER_HEIGHT = 28;
+    const PORT_SPACING = 24;
+    const BOTTOM_PADDING = 10;
+
+    // Calculate required height for inputs and outputs
+    const inHeight = HEADER_HEIGHT + 10 + this.inputs.length * PORT_SPACING + BOTTOM_PADDING;
+    const outHeight = HEADER_HEIGHT + 10 + this.outputs.length * PORT_SPACING + BOTTOM_PADDING;
+
+    const minHeight = Math.max(inHeight, outHeight, 60); // Minimum 60px base
+
+    if (this.size.height < minHeight) {
+      this.size.height = minHeight;
+    }
+  }
+
   addInput(name, datatype = "any", portType = "data") {
-    if (!name || typeof name !== "string") {
-      throw new Error("Input port name must be a non-empty string");
+    // ... existing validation ...
+    if (typeof name !== "string" || (portType === "data" && !name)) {
+      throw new Error("Input port name must be a string (non-empty for data ports)");
     }
     const port = { id: randomUUID(), name, datatype, portType, dir: "in" };
     this.inputs.push(port);
+    this._updateMinSize();
     return port;
   }
 
-  /**
-   * Add an output port to this node
-   * @param {string} name - Port name
-   * @param {string} [datatype="any"] - Data type for the port
-   * @param {string} [portType="data"] - Port type: "exec" or "data"
-   * @returns {Object} The created port
-   */
   addOutput(name, datatype = "any", portType = "data") {
-    if (!name || typeof name !== "string") {
-      throw new Error("Output port name must be a non-empty string");
+    // ... existing validation ...
+    if (typeof name !== "string" || (portType === "data" && !name)) {
+      throw new Error("Output port name must be a string (non-empty for data ports)");
     }
     const port = { id: randomUUID(), name, datatype, portType, dir: "out" };
     this.outputs.push(port);
+    this._updateMinSize();
     return port;
   }
 }

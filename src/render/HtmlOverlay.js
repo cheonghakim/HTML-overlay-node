@@ -70,7 +70,7 @@ export class HtmlOverlay {
   }
 
   /** 노드용 엘리먼트 생성(한 번만) */
-  _ensureNodeElement(node, def) {
+  _ensureNodeElement(node, def, graph) {
     let el = this.nodes.get(node.id);
     if (!el) {
       // 1) 사용자 정의 render 함수가 있으면 우선 사용
@@ -80,9 +80,9 @@ export class HtmlOverlay {
       // 2) 아니면 기본 레이아웃 사용 (html 설정이 있는 경우)
       else if (def.html) {
         el = this._createDefaultNodeLayout(node);
-        // 초기화 훅
+        // 초기화 훅 - graph reference 전달
         if (def.html.init) {
-          def.html.init(node, el, el._domParts);
+          def.html.init(node, el, { ...el._domParts, graph });
         }
       } else {
         return null; // HTML 없음
@@ -114,7 +114,7 @@ export class HtmlOverlay {
       const hasHtml = !!(def?.html);
       if (!hasHtml) continue;
 
-      const el = this._ensureNodeElement(node, def);
+      const el = this._ensureNodeElement(node, def, graph);
       if (!el) continue;
 
       // 노드 위치/크기 동기화 (월드 좌표 → 컨테이너 내부는 이미 scale/translate 적용)
@@ -144,6 +144,16 @@ export class HtmlOverlay {
         this.nodes.delete(id);
       }
     }
+  }
+
+  /**
+   * Sync container transform with renderer state (lightweight update)
+   * Called when zoom/pan occurs without needing full redraw
+   */
+  syncTransform() {
+    const { scale, offsetX, offsetY } = this.renderer;
+    this.container.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+    this.container.style.transformOrigin = "0 0";
   }
 
   clear() {

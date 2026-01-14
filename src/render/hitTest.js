@@ -1,6 +1,11 @@
 // src/render/hitTest.js
 export function hitTestNode(node, x, y) {
-  const { x: nx, y: ny, w: width, h: height } = node.computed || {
+  const {
+    x: nx,
+    y: ny,
+    w: width,
+    h: height,
+  } = node.computed || {
     x: node.pos.x,
     y: node.pos.y,
     w: node.size.width,
@@ -10,20 +15,21 @@ export function hitTestNode(node, x, y) {
 }
 
 export function portRect(node, port, idx, dir) {
-  const { x: nx, y: ny, w: width, h: height } = node.computed || {
+  const {
+    x: nx,
+    y: ny,
+    w: width,
+    h: height,
+  } = node.computed || {
     x: node.pos.x,
     y: node.pos.y,
     w: node.size.width,
     h: node.size.height,
   };
 
-  // Calculate port count for better spacing
-  const portCount = dir === "in" ? node.inputs.length : node.outputs.length;
+  // Fixed spacing
   const headerHeight = 28;
-  const availableHeight = (height || node.size.height) - headerHeight - 16;
-  const spacing = availableHeight / (portCount + 1);
-
-  const y = ny + headerHeight + spacing * (idx + 1);
+  const y = ny + headerHeight + 10 + idx * 24;
 
   // Ports centered on node edges (half inside, half outside)
   const portWidth = 12;

@@ -1,15 +1,16 @@
 {
   "name": "html-overlay-node",
-  "version": "0.1.6",
-  "description": "A customizable, LiteGraph-style node editor library with canvas rendering, HTML overlays, and flexible execution control",
-  "main": "dist/html-overlay-node.umd.js",
-  "module": "dist/html-overlay-node.es.js",
+  "version": "0.1.9",
+  "description": "LiteGraph-style node editor with HTML overlay support",
+  "main": "./src/index.js",
+  "module": "./src/index.js",
   "type": "module",
   "exports": {
-    ".": {
-      "import": "./dist/html-overlay-node.es.js",
-      "require": "./dist/html-overlay-node.umd.js"
-    }
+    ".": "./src/index.js",
+    "./nodes": "./src/nodes/index.js",
+    "./defaults": "./src/defaults/index.js",
+    "./index.css": "./index.css",
+    "./src/ui/PropertyPanel.css": "./src/ui/PropertyPanel.css"
   },
   "files": [
     "dist",

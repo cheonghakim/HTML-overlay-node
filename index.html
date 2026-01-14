@@ -110,6 +110,7 @@
   </div>
   <script type="module">
     import { createGraphEditor } from "./src/index.js";
+    import { registerAllNodes } from "./src/nodes/index.js";
 
     // One-liner Initialization!
     const editor = createGraphEditor("#graph-editor", {
@@ -118,6 +119,12 @@
       showMinimap: true,
       enablePropertyPanel: true
     });
+
+    // Expose editor to window for access from nodes
+    window.editor = editor;
+
+    // Register all example nodes
+    registerAllNodes(editor.registry, editor.hooks);
 
     // Edge style selector
     const edgeStyleSelector = document.getElementById("edgeStyleSelector");

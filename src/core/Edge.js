@@ -16,8 +16,10 @@ export class Edge {
    * @param {string} options.toPort - Target port ID
    */
   constructor({ id, fromNode, fromPort, toNode, toPort }) {
-    if (!fromNode || !fromPort || !toNode || !toPort) {
-      throw new Error("Edge requires fromNode, fromPort, toNode, and toPort");
+    // Allow empty strings for port names (exec ports use empty names)
+    // Only check for null/undefined
+    if (fromNode == null || fromPort == null || toNode == null || toPort == null) {
+      throw new Error("Edge requires fromNode, fromPort, toNode, and toPort (null/undefined not allowed)");
     }
     this.id = id ?? randomUUID();
     this.fromNode = fromNode;

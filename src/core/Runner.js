@@ -54,6 +54,7 @@ export class Runner {
 
   /**
    * Execute connected nodes once from a starting node
+   * Uses queue-based traversal to support branching exec flows
    * @param {string} startNodeId - ID of the node to start from
    * @param {number} dt - Delta time
    */
@@ -62,14 +63,21 @@ export class Runner {
 
     const executedNodes = [];
     const allConnectedNodes = new Set();
-    let currentNodeId = startNodeId;
+    const queue = [startNodeId];
+    const visited = new Set(); // Prevent infinite loops
 
-    // Follow exec flow
-    while (currentNodeId) {
+    // Queue-based traversal for branching execution
+    while (queue.length > 0) {
+      const currentNodeId = queue.shift();
+
+      // Skip if already executed (prevents cycles)
+      if (visited.has(currentNodeId)) continue;
+      visited.add(currentNodeId);
+
       const node = this.graph.nodes.get(currentNodeId);
       if (!node) {
         console.warn(`[Runner.runOnce] Node not found: ${currentNodeId}`);
-        break;
+        continue;
       }
 
       executedNodes.push(currentNodeId);
@@ -96,8 +104,9 @@ export class Runner {
       // Execute current node
       this.executeNode(currentNodeId, dt);
 
-      // Find next node via exec output
-      currentNodeId = this.findNextExecNode(currentNodeId);
+      // Find all next nodes via exec outputs and add to queue
+      const nextNodes = this.findAllNextExecNodes(currentNodeId);
+      queue.push(...nextNodes);
     }
 
     console.log("[Runner.runOnce] Executed nodes:", executedNodes.length);
@@ -115,26 +124,31 @@ export class Runner {
   }
 
   /**
-   * Find the next node to execute by following exec output
+   * Find all nodes connected via exec outputs
+   * Supports multiple connections from a single exec output
    * @param {string} nodeId - Current node ID
-   * @returns {string|null} Next node ID or null
+   * @returns {string[]} Array of next node IDs
    */
-  findNextExecNode(nodeId) {
+  findAllNextExecNodes(nodeId) {
     const node = this.graph.nodes.get(nodeId);
-    if (!node) return null;
+    if (!node) return [];
 
-    // Find exec output port
-    const execOutput = node.outputs.find(p => p.portType === "exec");
-    if (!execOutput) return null;
+    // Find all exec output ports
+    const execOutputs = node.outputs.filter(p => p.portType === "exec");
+    if (execOutputs.length === 0) return [];
 
-    // Find edge from exec output
-    for (const edge of this.graph.edges.values()) {
-      if (edge.fromNode === nodeId && edge.fromPort === execOutput.id) {
-        return edge.toNode;
+    const nextNodes = [];
+
+    // Find all edges from exec outputs
+    for (const execOutput of execOutputs) {
+      for (const edge of this.graph.edges.values()) {
+        if (edge.fromNode === nodeId && edge.fromPort === execOutput.id) {
+          nextNodes.push(edge.toNode);
+        }
       }
     }
 
-    return null;
+    return nextNodes;
   }
 
   /**

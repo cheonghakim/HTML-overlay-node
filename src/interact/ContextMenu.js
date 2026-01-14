@@ -232,7 +232,11 @@ export class ContextMenu {
 
         // Show submenu if exists
         if (item.submenu) {
-          this._showSubmenu(item.submenu, itemEl);
+          // Support function-based submenus for dynamic content
+          const submenuItems = typeof item.submenu === 'function'
+            ? item.submenu()
+            : item.submenu;
+          this._showSubmenu(submenuItems, itemEl);
         }
       });
 
