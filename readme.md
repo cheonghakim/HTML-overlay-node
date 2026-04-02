@@ -3,419 +3,113 @@
 [![npm version](https://img.shields.io/npm/v/html-overlay-node.svg)](https://www.npmjs.com/package/html-overlay-node)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**HTML-overlay-Node** is a customizable, LiteGraph-style node editor library for building visual programming interfaces. It uses **Canvas rendering** for fast performance and supports node type registration, execution cycle control, custom drawing, HTML overlays, and group management.
+**HTML-overlay-Node**는 Canvas의 정밀함과 HTML의 유연함을 결합한 전문가용 노드 에디터 라이브러리입니다. 장난감 같은 디자인에서 벗어나 실제 프로덕션 환경에 적합한 날카롭고 세련된 UI/UX를 지향합니다.
 
 ---
 
-## ✨ Features
+## ⚡ 주요 특징
 
-- 🎨 **Production-quality design** - Professional dark theme with refined aesthetics
-- 🔧 **Type registration system** - Easily create custom node types
-- 🔌 **Dual port system** - Exec ports (flow control) and data ports (values)
-- ⚡ **Flexible execution** - Automatic or manual execution modes with trigger nodes
-- 🔗 **Multiple edge styles** - Curved, orthogonal, or straight connections
-- 💾 **Serialization** - Save and load graphs with `toJSON`/`fromJSON`
-- 🖱️ **Rich interactions** - Zoom, pan, drag, box select, and snap-to-grid
-- ⌨️ **Keyboard shortcuts** - Undo/redo, align, group, and more
-- 🎯 **Custom drawing** - Per-node custom rendering with `onDraw`
-- 🌐 **HTML overlays** - Embed interactive HTML UIs with proper port layering
-- 📦 **Group nodes** - Organize nodes in hierarchical groups
-- 🪝 **Event hooks** - Subscribe to graph events for extensibility
-- 🎥 **Visual feedback** - Smooth animations and hover states
+- **전문가급 디자인**: 2px의 날카로운 라운딩 처리와 깊이감 있는 다크 테마로 도구의 전문성을 극대화했습니다.
+- **카테고리별 컬러 시스템**: Math, Logic, Data 등 노드 성격에 따른 정교한 컬러 코딩으로 복잡한 그래프의 가독성을 높였습니다.
+- **강력한 듀얼 포트**: 실행 제어(Flow)를 위한 Exec 포트와 데이터 전송(Data) 포트를 분리하여 복잡한 로직 설계가 가능합니다.
+- **인터랙티브 HTML 오버레이**: 노드 내부의 복잡한 UI는 HTML로, 전체 연결은 Canvas로 처리하여 성능과 확장성을 모두 잡았습니다.
+- **파워 유저 생산성**: 정렬(Align), 그룹화(Group), Undo/Redo 등 실제 작업 시간을 단축해주는 풍부한 단축키를 지원합니다.
+- **정밀한 시각 릴레이**: 노드 실행 상태를 보여주는 완벽하게 밀착된 테두리 애니메이션을 통해 실시간 피드백을 제공합니다.
 
 ---
 
-## Demo
+## 🚀 시작하기
 
-- 🏠 [Demo](https://cheonghakim.github.io/HTML-overlay-node/)
-
-## 🚀 Quick Start
+Vite나 Webpack 환경에서 바로 시작할 수 있습니다.
 
 ```javascript
 import { createGraphEditor } from "html-overlay-node";
+import "html-overlay-node/index.css";
 
-// One-liner Initialization!
-// Pass a selector or HTMLElement. Canvas and overlays are created automatically.
+// 단 한 줄로 에디터 초기화
 const editor = createGraphEditor("#editor-container", {
   autorun: true,
-  enablePropertyPanel: true, // Integrated property panel (default: true)
+  enablePropertyPanel: true
 });
 
-const { graph, registry, addGroup, start } = editor;
-```
+const { graph, registry, start } = editor;
 
-### 💅 Styles (Required)
-
-Make sure to import the necessary CSS files for the editor and Property Panel to look correctly:
-
-```javascript
-import "html-overlay-node/index.css";
-import "html-overlay-node/src/ui/PropertyPanel.css";
-```
-
-// Register and add nodes
+// 노드 등록 예시 (컬러 코드 포함)
 registry.register("math/Add", {
-title: "Add",
-size: { w: 180, h: 80 },
-inputs: [
-{ name: "a", datatype: "number" },
-{ name: "b", datatype: "number" },
-],
-outputs: [{ name: "result", datatype: "number" }],
-onCreate(node) {
-node.state.a = 0;
-node.state.b = 0;
-},
-onExecute(node, { getInput, setOutput }) {
-const a = getInput("a") ?? node.state.a;
-const b = getInput("b") ?? node.state.b;
-setOutput("result", a + b);
-},
-});
-
-// Add nodes
-const node1 = graph.addNode("math/Add", { x: 100, y: 100 });
-const node2 = graph.addNode("math/Add", { x: 100, y: 200 });
-
-// Create a group
-addGroup({
-title: "Math Operations",
-x: 50,
-y: 50,
-width: 300,
-height: 300,
-color: "#4a5568",
-members: [node1.id, node2.id],
+  title: "Add",
+  color: "#f43f5e", // 연산 노드는 로즈 핑크
+  size: { w: 180, h: 80 },
+  inputs: [
+    { name: "a", datatype: "number" },
+    { name: "b", datatype: "number" },
+  ],
+  outputs: [{ name: "result", datatype: "number" }],
+  onExecute(node, { getInput, setOutput }) {
+    const a = getInput("a") ?? 0;
+    const b = getInput("b") ?? 0;
+    setOutput("result", a + b);
+  },
 });
 
 start();
-
-````
-
----
-
-## 📦 Group Management
-
-HTML-overlay-Node supports organizing nodes into hierarchical groups for better organization.
-
-### Creating Groups
-
-```javascript
-const { addGroup } = editor;
-
-// Create a group
-const group = addGroup({
-  title: "My Group", // Group name
-  x: 0, // X position
-  y: 0, // Y position
-  width: 400, // Width (min: 100)
-  height: 300, // Height (min: 60)
-  color: "#2d3748", // Background color
-  members: [node1.id, node2.id], // Nodes to include
-});
-````
-
-### Group Features
-
-- **Hierarchical Structure**: Groups can contain multiple nodes
-- **Automatic Movement**: Nodes inside the group move with the group
-- **Resizable**: Resize groups using the handle in the bottom-right corner
-- **Custom Colors**: Set group colors for visual organization
-- **Local Coordinates**: World and local coordinates automatically managed
-
-### Advanced Group Operations
-
-```javascript
-// Access GroupManager
-const groupManager = graph.groupManager;
-
-// Reparent a node to a group
-graph.reparent(node, group);
-
-// Remove node from group (reparent to root)
-graph.reparent(node, null);
-
-// Resize a group
-groupManager.resizeGroup(group.id, 50, 50); // add 50px to width and height
-
-// Remove a group (children are un-grouped)
-groupManager.removeGroup(group.id);
-
-// Listen to group events
-hooks.on("group:change", () => {
-  console.log("Group structure changed");
-});
 ```
 
 ---
 
-## 🌐 HTML Overlays
+## 🎨 디자인 커스터마이징
 
-Create interactive HTML UIs inside nodes.
-
-### Basic Example
+다크 모드를 기본으로 하지만, 프로젝트 테마에 맞춰 모든 색상을 조정할 수 있습니다.
 
 ```javascript
-registry.register("ui/TextInput", {
-  title: "Text Input",
-  size: { w: 220, h: 100 },
-  outputs: [{ name: "text", datatype: "string" }],
-
-  html: {
-    init(node, el, { header, body }) {
-      el.style.backgroundColor = "#1a1a1a";
-      el.style.borderRadius = "8px";
-
-      const input = document.createElement("input");
-      input.type = "text";
-      input.placeholder = "Enter text...";
-      Object.assign(input.style, {
-        width: "100%",
-        padding: "8px",
-        background: "#111",
-        border: "1px solid #444",
-        color: "#fff",
-        pointerEvents: "auto", // IMPORTANT: Enable interaction
-      });
-
-      input.addEventListener("input", (e) => {
-        node.state.text = e.target.value;
-        hooks.emit("node:updated", node);
-      });
-
-      input.addEventListener("mousedown", (e) => e.stopPropagation()); // Prevent drag
-
-      body.appendChild(input);
-      el._input = input;
-    },
-
-    update(node, el, { selected }) {
-      el.style.borderColor = selected ? "#3b82f6" : "#333";
-      if (el._input.value !== (node.state.text || "")) {
-        el._input.value = node.state.text || "";
-      }
-    },
-  },
-
-  onCreate(node) {
-    node.state.text = "";
-  },
-
-  onExecute(node, { setOutput }) {
-    setOutput("text", node.state.text || "");
-  },
-});
-```
-
-### Best Practices
-
-1. **Enable Interaction**: Set `pointerEvents: "auto"` on interactive elements
-2. **Stop Propagation**: Prevent canvas drag with `e.stopPropagation()` on `mousedown`
-3. **Update State**: Emit `"node:updated"` when state changes
-4. **Store References**: Cache DOM elements in `el._refs` for performance
-5. **Port Visibility**: HTML overlays are rendered below ports for proper visibility
-
----
-
-## 🔌 Port Types
-
-HTML-overlay-Node supports two types of ports for different purposes:
-
-### Exec Ports (Flow Control)
-
-Exec ports control the execution flow between nodes.
-
-```javascript
-registry.register("util/Print", {
-  title: "Print",
-  inputs: [
-    { name: "exec", portType: "exec" }, // Execution input
-    { name: "value", portType: "data", datatype: "any" },
-  ],
-  outputs: [
-    { name: "exec", portType: "exec" }, // Execution output
-  ],
-  onExecute(node, { getInput }) {
-    console.log("[Print]", getInput("value"));
-  },
-});
-```
-
-### Data Ports (Values)
-
-Data ports transfer values between nodes.
-
-```javascript
-registry.register("math/Add", {
-  title: "Add",
-  inputs: [
-    { name: "exec", portType: "exec" },
-    { name: "a", portType: "data", datatype: "number" },
-    { name: "b", portType: "data", datatype: "number" },
-  ],
-  outputs: [
-    { name: "exec", portType: "exec" },
-    { name: "result", portType: "data", datatype: "number" },
-  ],
-  onExecute(node, { getInput, setOutput }) {
-    const result = (getInput("a") ?? 0) + (getInput("b") ?? 0);
-    setOutput("result", result);
-  },
-});
-```
-
-### Visual Style
-
-- **Exec ports**: Emerald green rounded squares (8×8px)
-- **Data ports**: Indigo blue circles (10px diameter)
-- Both have subtle outlines for depth
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Shortcut                        | Action                      |
-| ------------------------------- | --------------------------- |
-| **Selection**                   |                             |
-| `Click`                         | Select node                 |
-| `Shift + Click`                 | Add to selection            |
-| `Ctrl + Drag`                   | Box select                  |
-| **Editing**                     |                             |
-| `Delete`                        | Delete selected nodes       |
-| `Ctrl + Z`                      | Undo                        |
-| `Ctrl + Y` / `Ctrl + Shift + Z` | Redo                        |
-| **Grouping**                    |                             |
-| `Ctrl + G`                      | Create group from selection |
-| **Alignment**                   |                             |
-| `A`                             | Align nodes horizontally    |
-| `Shift + A`                     | Align nodes vertically      |
-| **Tools**                       |                             |
-| `G`                             | Toggle snap-to-grid         |
-| `?`                             | Toggle shortcuts help       |
-| **Navigation**                  |                             |
-| `Middle Click + Drag`           | Pan canvas                  |
-| `Mouse Wheel`                   | Zoom in/out                 |
-| `Right Click`                   | Context menu                |
-
----
-
-## 📚 Complete API
-
-For full API documentation, see the comments in [src/index.js](src/index.js).
-
-### Editor API
-
-| Property            | Description           |
-| ------------------- | --------------------- |
-| `graph`             | Graph instance        |
-| `registry`          | Node type registry    |
-| `hooks`             | Event system          |
-| `render()`          | Trigger manual render |
-| `start()`           | Start execution loop  |
-| `stop()`            | Stop execution loop   |
-| `addGroup(options)` | Create a group        |
-| `destroy()`         | Cleanup               |
-
-### Key Methods
-
-- `registry.register(type, definition)` - Register node type
-- `graph.addNode(type, options)` - Create node
-- `graph.addEdge(from, fromPort, to, toPort)` - Connect nodes
-- `graph.toJSON()` / `graph.fromJSON(json)` - Serialize/deserialize
-- `hooks.on(event, callback)` - Subscribe to events
-
-### Available Events
-
-- `node:create` | `node:move` | `node:resize` | `node:updated`
-- `edge:create` | `edge:delete`
-- `group:change`
-- `runner:start` | `runner:stop` | `runner:tick`
-- `error`
-
----
-
-## 🎨 Customization
-
-### Theme Colors
-
-```javascript
-const editor = createGraphEditor(canvas, {
+const editor = createGraphEditor("#container", {
   theme: {
-    bg: "#0d0d0f", // Canvas background
-    grid: "#1a1a1d", // Grid lines
-    node: "#16161a", // Node background
-    nodeBorder: "#2a2a2f", // Node border
-    title: "#1f1f24", // Node header
-    text: "#e4e4e7", // Primary text
-    textMuted: "#a1a1aa", // Secondary text
-    port: "#6366f1", // Data port color (indigo)
-    portExec: "#10b981", // Exec port color (emerald)
-    edge: "#52525b", // Edge color
-    edgeActive: "#8b5cf6", // Active edge (purple)
-    accent: "#6366f1", // Accent color
-    accentBright: "#818cf8", // Bright accent
-  },
-});
-```
-
-### Edge Styles
-
-```javascript
-// Set edge style
-editor.renderer.setEdgeStyle("orthogonal"); // or "curved", "line"
-```
-
-### Custom Node Drawing
-
-```javascript
-registry.register("visual/Circle", {
-  title: "Circle",
-  size: { w: 120, h: 120 },
-  onDraw(node, { ctx, theme }) {
-    const { x, y, width, height } = node.computed;
-    const centerX = x + width / 2;
-    const centerY = y + height / 2;
-    const radius = Math.min(width, height) / 3;
-
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-    ctx.fillStyle = theme.wire;
-    ctx.fill();
-  },
+    bg: "#0d0d0f",
+    accent: "#6366f1", // 메인 포인트 컬러
+    node: "#16161a",  // 노드 배경
+    title: "#1f1f24"  // 노드 헤더
+  }
 });
 ```
 
 ---
 
-## 💾 Serialization
+## ⌨️ 생산성을 높여주는 단축키
+
+| 기능 | 단축키 |
+| :--- | :--- |
+| **노드 삭제** | `Delete` |
+| **수평 정렬** | `A` |
+| **수직 정렬** | `Shift + A` |
+| **그룹 생성** | `Ctrl + G` |
+| **그리드 스냅**| `G` |
+| **되돌리기** | `Ctrl + Z` / `Ctrl + Y` |
+| **영역 선택** | `Ctrl + Drag` |
+
+---
+
+## 💾 데이터 다루기
+
+그래프 통째로 JSON으로 뽑거나, 저장된 데이터를 불러오는 것도 간단합니다.
 
 ```javascript
-// Save
-const json = graph.toJSON();
-localStorage.setItem("myGraph", JSON.stringify(json));
+// 현재 그래프 저장
+const data = graph.toJSON();
 
-// Load
-const saved = JSON.parse(localStorage.getItem("myGraph"));
-graph.fromJSON(saved);
+// 데이터 불러오기
+graph.fromJSON(data);
 ```
 
 ---
 
-## 🐛 Troubleshooting
-
-| Issue                        | Solution                                            |
-| ---------------------------- | --------------------------------------------------- |
-| Canvas not rendering         | Ensure canvas has explicit width/height             |
-| Nodes not executing          | Call `start()` or set `autorun: true`               |
-| Type errors                  | Register node types before using them               |
-| HTML overlay not interactive | Set `pointerEvents: "auto"` on elements             |
-| Performance issues           | Limit to <1000 nodes, optimize `onExecute`/`onDraw` |
+## 🔗 관련 링크
+- [GitHub Repository](https://github.com/cheonghakim/html-overlay-node)
+- [Issue Tracker](https://github.com/cheonghakim/html-overlay-node/issues)
 
 ---
 
-## 🤝 Contributing
-
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+## 📄 라이선스
+[MIT](LICENSE) © cheonghakim
+G.md).
 
 ```bash
 npm install   # Install dependencies

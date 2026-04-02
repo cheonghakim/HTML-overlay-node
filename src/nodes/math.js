@@ -7,7 +7,8 @@ export function registerMathNodes(registry) {
     // Add Node
     registry.register("math/Add", {
         title: "Add",
-        size: { w: 140, h: 100 },
+        color: "#f43f5e", // math (rose)
+        size: { w: 140 },
         inputs: [
             { name: "exec", portType: "exec" },
             { name: "a", portType: "data", datatype: "number" },
@@ -22,9 +23,13 @@ export function registerMathNodes(registry) {
             node.state.b = 0;
         },
         onExecute(node, { getInput, setOutput }) {
-            const a = getInput("a") ?? 0;
-            const b = getInput("b") ?? 0;
+            const a = getInput("a") ?? node.state.a ?? 0;
+            const b = getInput("b") ?? node.state.b ?? 0;
             const result = a + b;
+            // Sync state so PropertyPanel shows actual values
+            node.state.a = a;
+            node.state.b = b;
+            node.state.result = result;
             console.log("[Add] a:", a, "b:", b, "result:", result);
             setOutput("result", result);
         },
@@ -33,7 +38,8 @@ export function registerMathNodes(registry) {
     // Subtract Node
     registry.register("math/Subtract", {
         title: "Subtract",
-        size: { w: 140, h: 80 },
+        color: "#f43f5e", // math (rose)
+        size: { w: 140 },
         inputs: [
             { name: "a", datatype: "number" },
             { name: "b", datatype: "number" },
@@ -49,7 +55,8 @@ export function registerMathNodes(registry) {
     // Multiply Node
     registry.register("math/Multiply", {
         title: "Multiply",
-        size: { w: 140, h: 100 },
+        color: "#f43f5e", // math (rose)
+        size: { w: 140 },
         inputs: [
             { name: "exec", portType: "exec" },
             { name: "a", portType: "data", datatype: "number" },
@@ -60,9 +67,14 @@ export function registerMathNodes(registry) {
             { name: "result", portType: "data", datatype: "number" },
         ],
         onExecute(node, { getInput, setOutput }) {
-            const a = getInput("a") ?? 0;
-            const b = getInput("b") ?? 0;
+            const a = getInput("a") ?? node.state?.a ?? 0;
+            const b = getInput("b") ?? node.state?.b ?? 0;
             const result = a * b;
+            if (node.state) {
+                node.state.a = a;
+                node.state.b = b;
+                node.state.result = result;
+            }
             console.log("[Multiply] a:", a, "b:", b, "result:", result);
             setOutput("result", result);
         },
@@ -71,7 +83,8 @@ export function registerMathNodes(registry) {
     // Divide Node
     registry.register("math/Divide", {
         title: "Divide",
-        size: { w: 140, h: 80 },
+        color: "#f43f5e", // math (rose)
+        size: { w: 140 },
         inputs: [
             { name: "a", datatype: "number" },
             { name: "b", datatype: "number" },

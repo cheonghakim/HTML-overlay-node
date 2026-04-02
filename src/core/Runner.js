@@ -9,12 +9,10 @@ export class Runner {
     this.cyclesPerFrame = Math.max(1, cyclesPerFrame | 0);
   }
 
-  // 외부에서 실행 중인지 확인
   isRunning() {
     return this.running;
   }
 
-  // 실행 도중에도 CPS 변경 가능
   setCyclesPerFrame(n) {
     this.cyclesPerFrame = Math.max(1, n | 0);
   }
@@ -47,53 +45,46 @@ export class Runner {
           }
         }
       }
-      // commit writes for this cycle
       this.graph.swapBuffers();
     }
   }
 
   /**
-   * Execute connected nodes once from a starting node
-   * Uses queue-based traversal to support branching exec flows
-   * @param {string} startNodeId - ID of the node to start from
-   * @param {number} dt - Delta time
+   * Execute connected nodes once from a starting node.
+   * Returns execEdgeOrder: exec edges in the order they were traversed.
    */
   runOnce(startNodeId, dt = 0) {
-    console.log("[Runner.runOnce] Starting exec flow from node:", startNodeId);
-
     const executedNodes = [];
     const allConnectedNodes = new Set();
-    const queue = [startNodeId];
-    const visited = new Set(); // Prevent infinite loops
+    const execEdgeOrder = []; // exec edge IDs in traversal order
 
-    // Queue-based traversal for branching execution
+    // Queue items: { nodeId, fromEdgeId }
+    const queue = [{ nodeId: startNodeId, fromEdgeId: null }];
+    const visited = new Set();
+
     while (queue.length > 0) {
-      const currentNodeId = queue.shift();
+      const { nodeId: currentNodeId, fromEdgeId } = queue.shift();
 
-      // Skip if already executed (prevents cycles)
       if (visited.has(currentNodeId)) continue;
       visited.add(currentNodeId);
 
+      // Record the exec edge that led to this node
+      if (fromEdgeId) execEdgeOrder.push(fromEdgeId);
+
       const node = this.graph.nodes.get(currentNodeId);
-      if (!node) {
-        console.warn(`[Runner.runOnce] Node not found: ${currentNodeId}`);
-        continue;
-      }
+      if (!node) continue;
 
       executedNodes.push(currentNodeId);
       allConnectedNodes.add(currentNodeId);
-      console.log(`[Runner.runOnce] Executing: ${node.title} (${node.type})`);
 
-      // Find and add data dependency nodes (nodes providing input data)
+      // Execute data dependency nodes first
       for (const input of node.inputs) {
         if (input.portType === "data") {
-          // Find edge feeding this data input
           for (const edge of this.graph.edges.values()) {
             if (edge.toNode === currentNodeId && edge.toPort === input.id) {
               const sourceNode = this.graph.nodes.get(edge.fromNode);
               if (sourceNode && !allConnectedNodes.has(edge.fromNode)) {
                 allConnectedNodes.add(edge.fromNode);
-                // Execute data source node before current node
                 this.executeNode(edge.fromNode, dt);
               }
             }
@@ -101,17 +92,21 @@ export class Runner {
         }
       }
 
-      // Execute current node
+      // Execute this node
       this.executeNode(currentNodeId, dt);
 
-      // Find all next nodes via exec outputs and add to queue
-      const nextNodes = this.findAllNextExecNodes(currentNodeId);
-      queue.push(...nextNodes);
+      // Find exec output edges and enqueue next nodes
+      const execOutputs = node.outputs.filter((p) => p.portType === "exec");
+      for (const execOutput of execOutputs) {
+        for (const edge of this.graph.edges.values()) {
+          if (edge.fromNode === currentNodeId && edge.fromPort === execOutput.id) {
+            queue.push({ nodeId: edge.toNode, fromEdgeId: edge.id });
+          }
+        }
+      }
     }
 
-    console.log("[Runner.runOnce] Executed nodes:", executedNodes.length);
-
-    // Find all edges involved (both exec and data)
+    // Collect all edges involved (both exec and data)
     const connectedEdges = new Set();
     for (const edge of this.graph.edges.values()) {
       if (allConnectedNodes.has(edge.fromNode) && allConnectedNodes.has(edge.toNode)) {
@@ -119,27 +114,17 @@ export class Runner {
       }
     }
 
-    console.log("[Runner.runOnce] Connected edges count:", connectedEdges.size);
-    return { connectedNodes: allConnectedNodes, connectedEdges };
+    return { connectedNodes: allConnectedNodes, connectedEdges, execEdgeOrder };
   }
 
-  /**
-   * Find all nodes connected via exec outputs
-   * Supports multiple connections from a single exec output
-   * @param {string} nodeId - Current node ID
-   * @returns {string[]} Array of next node IDs
-   */
   findAllNextExecNodes(nodeId) {
     const node = this.graph.nodes.get(nodeId);
     if (!node) return [];
 
-    // Find all exec output ports
-    const execOutputs = node.outputs.filter(p => p.portType === "exec");
+    const execOutputs = node.outputs.filter((p) => p.portType === "exec");
     if (execOutputs.length === 0) return [];
 
     const nextNodes = [];
-
-    // Find all edges from exec outputs
     for (const execOutput of execOutputs) {
       for (const edge of this.graph.edges.values()) {
         if (edge.fromNode === nodeId && edge.fromPort === execOutput.id) {
@@ -147,15 +132,9 @@ export class Runner {
         }
       }
     }
-
     return nextNodes;
   }
 
-  /**
-   * Execute a single node
-   * @param {string} nodeId - Node ID to execute
-   * @param {number} dt - Delta time
-   */
   executeNode(nodeId, dt) {
     const node = this.graph.nodes.get(nodeId);
     if (!node) return;
@@ -174,7 +153,6 @@ export class Runner {
         setOutput: (portName, value) => {
           const p = node.outputs.find((o) => o.name === portName) || node.outputs[0];
           if (p) {
-            // Write directly to current buffer so other nodes can read it immediately
             const key = `${node.id}:${p.id}`;
             this.graph._curBuf().set(key, value);
           }
@@ -195,12 +173,10 @@ export class Runner {
       if (!this.running) return;
       const dtMs = this._last ? t - this._last : 0;
       this._last = t;
-      const dt = dtMs / 1000; // seconds
+      const dt = dtMs / 1000;
 
-      // 1) 스텝 실행
       this.step(this.cyclesPerFrame, dt);
 
-      // 2) 프레임 훅 (렌더러/컨트롤러는 여기서 running, time, dt를 받아 표현 업데이트)
       this.hooks?.emit?.("runner:tick", {
         time: t,
         dt,

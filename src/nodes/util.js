@@ -1,90 +1,115 @@
+// Duration each exec edge stays active during sequential animation (ms)
+const STEP_DURATION = 620;
+
 export function registerUtilNodes(registry) {
     registry.register("util/Trigger", {
         title: "Trigger",
-        size: { w: 140, h: 80 },
+        color: "#f59e0b", // event (amber)
+        size: { w: 140 },
         outputs: [{ name: "triggered", portType: "exec" }],
         html: {
-            init(node, el, { header, body }) {
-                // Styling
-                el.style.minWidth = "140px";
-                el.style.backgroundColor = "#1e1e23";
-                el.style.border = "1px solid #3a3a40";
-                el.style.borderRadius = "8px";
+            init(node, el, { body }) {
+                el.classList.add("node-overlay");
 
-                header.style.backgroundColor = "#2a2a31";
-                header.style.borderBottom = "1px solid #444";
-                header.style.color = "#eee";
-                header.style.fontSize = "12px";
-                header.textContent = "Trigger";
-
-                body.style.padding = "12px";
                 body.style.display = "flex";
                 body.style.alignItems = "center";
                 body.style.justifyContent = "center";
-                body.style.minHeight = "32px"; // Ensure consistent body height
 
                 const button = document.createElement("button");
-                button.textContent = "Fire!";
-                Object.assign(button.style, {
-                    padding: "8px 16px",
-                    background: "#4a9eff",
-                    border: "none",
-                    borderRadius: "4px",
-                    color: "#fff",
-                    fontSize: "14px",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                    pointerEvents: "auto",
-                });
+                button.className = "premium-button";
+                button.textContent = "Execute";
+                button.style.width = "100%";
+                button.style.textTransform = "uppercase";
+                button.style.letterSpacing = "1px";
 
                 button.addEventListener("click", (e) => {
                     e.stopPropagation();
                     e.preventDefault();
 
-                    node.state.triggered = true;
+                    if (node.state._firing) return;
 
-                    // Access controller and runner from window.editor
                     const editor = window.editor;
-                    if (!editor || !editor.controller || !editor.runner) {
-                        console.error("[Trigger] Editor, controller, or runner not found");
-                        return;
-                    }
+                    if (!editor?.controller || !editor?.runner) return;
 
                     const controller = editor.controller;
                     const runner = editor.runner;
 
-                    // Execute connected nodes using runner
-                    const result = runner.runOnce(node.id, 0);
-                    const connectedEdges = result.connectedEdges;
+                    node.state.triggered = true;
+                    node.state._firing = true;
 
-                    // Set active edges on controller (will be rendered on port canvas)
-                    controller.activeEdges = connectedEdges;
+                    // Active state styling
+                    button.style.borderColor = "#4f62c0";
+                    button.style.color = "#7080d8";
+                    button.style.background = "rgba(79,98,192,0.12)";
 
-                    // Show animation
-                    const startTime = performance.now();
-                    const animationDuration = 500;
+                    const { connectedEdges, execEdgeOrder } = runner.runOnce(node.id, 0);
 
-                    const animate = () => {
-                        const elapsed = performance.now() - startTime;
-                        if (elapsed < animationDuration) {
+                    controller.activeEdgeTimes = new Map();
+
+                    if (execEdgeOrder.length > 0) {
+                        // Sequential: animate one exec edge at a time
+                        const startTime = performance.now();
+                        const totalDuration = execEdgeOrder.length * STEP_DURATION + 80;
+
+                        const animate = () => {
+                            const now = performance.now();
+                            const elapsed = now - startTime;
+                            const step = Math.floor(elapsed / STEP_DURATION);
+
+                            const activeNow = new Set();
+                            const activeNodeNow = new Set();
+                            if (step < execEdgeOrder.length) {
+                                const edgeId = execEdgeOrder[step];
+                                activeNow.add(edgeId);
+                                if (!controller.activeEdgeTimes.has(edgeId)) {
+                                    controller.activeEdgeTimes.set(edgeId, startTime + step * STEP_DURATION);
+                                }
+                                // Highlight the destination node of this exec edge
+                                const edge = runner.graph.edges.get(edgeId);
+                                if (edge?.toNode) activeNodeNow.add(edge.toNode);
+                            }
+
+                            controller.activeEdges = activeNow;
+                            controller.activeNodes = activeNodeNow;
                             controller.render();
-                            requestAnimationFrame(animate);
-                        } else {
-                            controller.activeEdges = new Set();
-                            controller.render();
-                            node.state.triggered = false;
+
+                            if (elapsed < totalDuration) {
+                                requestAnimationFrame(animate);
+                            } else {
+                                _resetTrigger(controller, node, button);
+                            }
+                        };
+                        requestAnimationFrame(animate);
+                    } else if (connectedEdges.size > 0) {
+                        // Fallback: all data edges at once
+                        const startTime = performance.now();
+                        const totalDuration = STEP_DURATION;
+                        const now = performance.now();
+                        for (const id of connectedEdges) {
+                            controller.activeEdgeTimes.set(id, now);
                         }
-                    };
 
-                    animate();
+                        const animate = () => {
+                            controller.activeEdges = connectedEdges;
+                            controller.render();
+                            if (performance.now() - startTime < totalDuration) {
+                                requestAnimationFrame(animate);
+                            } else {
+                                _resetTrigger(controller, node, button);
+                            }
+                        };
+                        requestAnimationFrame(animate);
+                    } else {
+                        _resetTrigger(controller, node, button);
+                    }
                 });
 
                 body.appendChild(button);
+                el._btn = button;
             },
         },
         onExecute(node, { setOutput }) {
             if (node.state.triggered) {
-                console.log("[Trigger] Outputting triggered: true");
                 setOutput("triggered", true);
             }
         },
@@ -92,6 +117,8 @@ export function registerUtilNodes(registry) {
 
     registry.register("util/Watch", {
         title: "Watch",
+        color: "#10b981", // info (emerald)
+        size: { w: 180 },
         inputs: [{ name: "value", portType: "data", datatype: "any" }],
         onExecute(node, { getInput }) {
             const value = getInput("value");
@@ -101,6 +128,8 @@ export function registerUtilNodes(registry) {
 
     registry.register("util/Print", {
         title: "Print",
+        color: "#10b981", // info (emerald)
+        size: { w: 140 },
         inputs: [
             { name: "", portType: "exec" },
             { name: "value", portType: "data", datatype: "any" },
@@ -115,6 +144,8 @@ export function registerUtilNodes(registry) {
 
     registry.register("util/Timer", {
         title: "Timer",
+        color: "#f59e0b", // event (amber)
+        size: { w: 140 },
         inputs: [
             { name: "", portType: "exec" },
             { name: "delay (ms)", portType: "data", datatype: "number" },
@@ -124,11 +155,22 @@ export function registerUtilNodes(registry) {
             const delay = getInput("delay (ms)") || 0;
             await new Promise((resolve) => {
                 setTimeout(() => {
-                    console.log("[Timer] Triggered after", delay, "ms");
                     resolve();
                 }, delay);
             });
             setOutput("", true);
         },
     });
+}
+
+function _resetTrigger(controller, node, button) {
+    controller.activeEdges = new Set();
+    controller.activeEdgeTimes = new Map();
+    controller.activeNodes = new Set();
+    controller.render();
+    node.state.triggered = false;
+    node.state._firing = false;
+    button.style.borderColor = "#383858";
+    button.style.color = "#8888aa";
+    button.style.background = "transparent";
 }

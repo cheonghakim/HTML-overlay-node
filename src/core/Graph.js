@@ -51,11 +51,13 @@ export class Graph {
       const available = Array.from(this.registry.types.keys()).join(", ") || "none";
       throw new Error(`Unknown node type: "${type}". Available types: ${available}`);
     }
+    const height = opts.height || def.size?.h || this._calculateDefaultNodeHeight(def);
+    
     const node = new Node({
       type,
       title: def.title,
-      width: def.size?.w,
-      height: def.size?.h,
+      width: opts.width || def.size?.w || 140,
+      height,
       ...opts,
     });
     for (const i of def.inputs || []) node.addInput(i.name, i.datatype, i.portType || "data");
@@ -212,11 +214,17 @@ export class Graph {
     this.hooks?.emit("graph:serialize", json);
     return json;
   }
+
   fromJSON(json) {
-    this.clear();
+    this.nodes.clear();
+    this.edges.clear();
 
     // Restore nodes first
     for (const nd of json.nodes) {
+      const def = this.registry?.types?.get(nd.type);
+      const minH = def ? this._calculateDefaultNodeHeight(def) : 60;
+      const height = nd.h !== undefined ? nd.h : minH;
+
       const node = new Node({
         id: nd.id,
         type: nd.type,
@@ -224,10 +232,10 @@ export class Graph {
         x: nd.x,
         y: nd.y,
         width: nd.w,
-        height: nd.h,
+        height: height,
       });
+
       // Call onCreate to initialize node with defaults first
-      const def = this.registry?.types?.get(nd.type);
       if (def?.onCreate) {
         def.onCreate(node);
       }
@@ -263,5 +271,21 @@ export class Graph {
     this.hooks?.emit("graph:deserialize", json);
 
     return this;
+  }
+
+  _calculateDefaultNodeHeight(def) {
+    const inCount = def.inputs?.length || 0;
+    const outCount = def.outputs?.length || 0;
+    const maxPorts = Math.max(inCount, outCount);
+    const headerHeight = 26;
+    const padding = 8; // tighter buffer
+    const portSpacing = 20; // compact spacing
+    
+    let h = headerHeight + padding + (maxPorts * portSpacing) + padding;
+    
+    // Add extra space if it has HTML overlay to prevent overlap with ports
+    if (def.html) h += 16;
+    
+    return Math.max(h, 40); // Minimum height 40
   }
 }

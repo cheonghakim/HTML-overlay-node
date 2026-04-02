@@ -12,100 +12,21 @@
   <div id="wrap">
     <main class="content-root" id="graph-editor">
       <div id="toolbar">
-        <button id="saveBtn" title="Save graph to file (JSON)">
-          💾 Save
-        </button>
-
-        <button id="loadBtn" title="Load graph from file">
-          📁 Load
-        </button>
-
-        <div style="width: 1px; height: 24px; background: #444; margin: 0 8px;"></div>
-
+        <button id="saveBtn" title="Save graph to JSON file">Save</button>
+        <button id="loadBtn" title="Load graph from JSON file">Load</button>
+        <div class="toolbar-sep"></div>
         <label>
-          <span>Edge Style:</span>
+          <span>Edges</span>
           <select id="edgeStyleSelector">
             <option value="bezier">Curved</option>
             <option value="orthogonal" selected>Orthogonal</option>
             <option value="line">Straight</option>
           </select>
         </label>
-
-        <div class="indicator" id="snapIndicator">
-          Snap: ON
-        </div>
+        <div class="toolbar-sep"></div>
+        <div class="indicator" id="snapIndicator">Snap</div>
       </div>
 
-      <div id="helpToggle" title="Toggle shortcuts help (? key)">?</div>
-
-      <div id="helpOverlay">
-        <h3>
-          <span>⌨️ Keyboard Shortcuts</span>
-          <button class="close-btn" id="helpClose" title="Close (Esc)">×</button>
-        </h3>
-
-        <h4>🎯 Selection</h4>
-        <div class="shortcut-item">
-          <span>Select Node</span>
-          <span class="shortcut-key">Click</span>
-        </div>
-        <div class="shortcut-item">
-          <span>Add to Selection</span>
-          <span class="shortcut-key">Shift + Click</span>
-        </div>
-        <div class="shortcut-item">
-          <span>Box Select</span>
-          <span class="shortcut-key">Ctrl + Drag</span>
-        </div>
-
-        <h4>✂️ Editing</h4>
-        <div class="shortcut-item">
-          <span>Delete Selected</span>
-          <span class="shortcut-key">Delete</span>
-        </div>
-        <div class="shortcut-item">
-          <span>Undo</span>
-          <span class="shortcut-key">Ctrl + Z</span>
-        </div>
-        <div class="shortcut-item">
-          <span>Redo</span>
-          <span class="shortcut-key">Ctrl + Y</span>
-        </div>
-
-        <h4>📦 Grouping</h4>
-        <div class="shortcut-item">
-          <span>Create Group</span>
-          <span class="shortcut-key">Ctrl + G</span>
-        </div>
-
-        <h4>📐 Alignment</h4>
-        <div class="shortcut-item">
-          <span>Align Horizontal</span>
-          <span class="shortcut-key">A</span>
-        </div>
-        <div class="shortcut-item">
-          <span>Align Vertical</span>
-          <span class="shortcut-key">Shift + A</span>
-        </div>
-
-        <h4>🔧 Tools</h4>
-        <div class="shortcut-item">
-          <span>Toggle Snap-to-Grid</span>
-          <span class="shortcut-key">G</span>
-        </div>
-        <div class="shortcut-item">
-          <span>Pan Canvas</span>
-          <span class="shortcut-key">Middle Click + Drag</span>
-        </div>
-        <div class="shortcut-item">
-          <span>Zoom</span>
-          <span class="shortcut-key">Mouse Wheel</span>
-        </div>
-        <div class="shortcut-item">
-          <span>Context Menu</span>
-          <span class="shortcut-key">Right Click</span>
-        </div>
-      </div>
     </main>
   </div>
   <script type="module">
@@ -117,7 +38,8 @@
       theme: 'dark',
       autorun: false,
       showMinimap: true,
-      enablePropertyPanel: true
+      enablePropertyPanel: true,
+      enableHelp: true // New modular help system!
     });
 
     // Expose editor to window for access from nodes
@@ -133,47 +55,8 @@
       editor.render();
     });
 
-    // Update snap indicator
-    const snapIndicator = document.getElementById("snapIndicator");
-
-    // Help overlay toggle
-    const helpOverlay = document.getElementById("helpOverlay");
-    const helpToggle = document.getElementById("helpToggle");
-
-    if (helpToggle && helpOverlay) {
-      helpToggle.addEventListener('click', () => {
-        helpOverlay.classList.toggle('visible');
-        helpToggle.classList.toggle('active');
-      });
-
-      // Close button
-      const helpClose = document.getElementById('helpClose');
-      if (helpClose) {
-        helpClose.addEventListener('click', (e) => {
-          e.stopPropagation();
-          helpOverlay.classList.remove('visible');
-          helpToggle.classList.remove('active');
-        });
-      }
-    }
-
-    // Toggle with ? key and ESC to close
+    // Update snap indicator when G is pressed
     window.addEventListener('keydown', (e) => {
-      if (helpOverlay && helpToggle) {
-        if (e.key === '?' || (e.shiftKey && e.key === '/')) {
-          e.preventDefault();
-          helpOverlay.classList.toggle('visible');
-          helpToggle.classList.toggle('active');
-        }
-
-        // ESC to close help
-        if (e.key === 'Escape' && helpOverlay.classList.contains('visible')) {
-          helpOverlay.classList.remove('visible');
-          helpToggle.classList.remove('active');
-        }
-      }
-
-      // Update snap indicator when G is pressed
       if (e.key.toLowerCase() === 'g' && !e.ctrlKey && !e.metaKey && editor.controller) {
         setTimeout(() => {
           snapIndicator.textContent = `Snap: ${editor.controller.snapToGrid ? "ON" : "OFF"}`;

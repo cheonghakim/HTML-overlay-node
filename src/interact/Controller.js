@@ -25,6 +25,11 @@ export class Controller {
     this.gResizing = null;
     this.boxSelecting = null; // { startX, startY, currentX, currentY } - world coords
 
+    // Edge / node animation state
+    this.activeEdges = new Set();
+    this.activeEdgeTimes = new Map(); // edge.id → activation timestamp
+    this.activeNodes = new Set();     // node IDs currently executing
+
     // Feature flags
     this.snapToGrid = true; // Snap nodes to grid (toggle with G key)
     this.gridSize = 20; // Grid size for snapping
@@ -779,10 +784,12 @@ export class Controller {
       this.edgeRenderer._applyTransform();
 
       this.edgeRenderer.drawEdgesOnly(this.graph, {
-        activeEdges: this.activeEdges || new Set(),
-        running: false,
+        activeEdges: this.activeEdges,
+        activeEdgeTimes: this.activeEdgeTimes,
+        activeNodes: this.activeNodes,
+        selection: this.selection,
         time: performance.now(),
-        tempEdge: tEdge, // Draw temp edge on edge layer
+        tempEdge: tEdge,
       });
 
       this.edgeRenderer._resetTransform();

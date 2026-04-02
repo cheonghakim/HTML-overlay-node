@@ -7,7 +7,8 @@ export function registerCoreNodes(registry, hooks) {
     // Note Node
     registry.register("core/Note", {
         title: "Note",
-        size: { w: 180, h: 80 },
+        color: "#10b981", // info (emerald)
+        size: { w: 180 },
         inputs: [{ name: "in", datatype: "any" }],
         outputs: [{ name: "out", datatype: "any" }],
         onCreate(node) {
@@ -26,43 +27,27 @@ export function registerCoreNodes(registry, hooks) {
     // HTML Note Node
     registry.register("core/HtmlNote", {
         title: "HTML Note",
-        size: { w: 200, h: 150 },
+        color: "#3b82f6", // data (blue)
+        size: { w: 220 },
         inputs: [{ name: "in", datatype: "any" }],
         outputs: [{ name: "out", datatype: "any" }],
 
         html: {
-            init(node, el, { header, body }) {
-                el.style.backgroundColor = "#222";
-                el.style.borderRadius = "8px";
-                el.style.border = "1px solid #444";
-                el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
+            init(node, el, { body }) {
+                el.classList.add("node-overlay");
 
-                header.style.backgroundColor = "#333";
-                header.style.borderBottom = "1px solid #444";
-                header.style.color = "#eee";
-                header.style.fontSize = "12px";
-                header.style.fontWeight = "bold";
-                header.textContent = "My HTML Node";
+                body.style.display = "flex";
+                body.style.flexDirection = "column";
+                body.style.gap = "8px";
 
-                body.style.padding = "8px";
-                body.style.color = "#ccc";
-                body.style.fontSize = "12px";
-
-                const contentDiv = document.createElement("div");
-                contentDiv.textContent = "Event Name";
-                body.appendChild(contentDiv);
+                const label = document.createElement("label");
+                label.className = "premium-label";
+                label.textContent = "Data Input";
+                body.appendChild(label);
 
                 const input = document.createElement("input");
-                Object.assign(input.style, {
-                    marginTop: "4px",
-                    padding: "4px",
-                    background: "#111",
-                    border: "1px solid #555",
-                    color: "#fff",
-                    borderRadius: "4px",
-                    pointerEvents: "auto",
-                });
-                input.placeholder = "Type here...";
+                input.className = "premium-input";
+                input.placeholder = "Type message...";
                 input.addEventListener("input", (e) => {
                     node.state.text = e.target.value;
                 });
@@ -72,10 +57,8 @@ export function registerCoreNodes(registry, hooks) {
                 el._input = input;
             },
 
-            update(node, el, { header, selected }) {
-                el.style.borderColor = selected ? "#6cf" : "#444";
-                header.style.backgroundColor = selected ? "#3a4a5a" : "#333";
-
+            update(node, el, _opts) {
+                // Selection is handled by the canvas renderer
                 if (el._input.value !== (node.state.text || "")) {
                     el._input.value = node.state.text || "";
                 }
@@ -93,46 +76,33 @@ export function registerCoreNodes(registry, hooks) {
 
     // Todo List Node (HTML Overlay)
     registry.register("core/TodoNode", {
-        title: "Todo List",
+        title: "Task list",
+        color: "#10b981", // info (emerald)
         size: { w: 240, h: 300 },
         inputs: [{ name: "in", datatype: "any" }],
         outputs: [{ name: "out", datatype: "any" }],
         html: {
-            init(node, el, { header, body }) {
-                el.style.backgroundColor = "#1e1e24";
-                el.style.borderRadius = "8px";
-                el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.5)";
-                el.style.border = "1px solid #333";
-
-                header.style.backgroundColor = "#2a2a31";
-                header.style.padding = "8px";
-                header.style.fontWeight = "bold";
-                header.style.color = "#e9e9ef";
-                header.textContent = node.title;
+            init(node, el, { body }) {
+                el.classList.add("node-overlay");
 
                 body.style.display = "flex";
                 body.style.flexDirection = "column";
-                body.style.padding = "8px";
-                body.style.color = "#e9e9ef";
+
+                const label = document.createElement("label");
+                label.className = "premium-label";
+                label.textContent = "New Task";
+                body.appendChild(label);
 
                 const inputRow = document.createElement("div");
-                Object.assign(inputRow.style, { display: "flex", gap: "4px", marginBottom: "8px" });
+                Object.assign(inputRow.style, { display: "flex", gap: "6px", marginBottom: "12px" });
 
                 const input = document.createElement("input");
-                Object.assign(input.style, {
-                    flex: "1", padding: "6px", borderRadius: "4px",
-                    border: "1px solid #444", background: "#141417", color: "#fff",
-                    pointerEvents: "auto",
-                });
-                input.placeholder = "Add task...";
+                input.className = "premium-input";
+                input.placeholder = "What needs to be done?";
 
                 const addBtn = document.createElement("button");
-                addBtn.textContent = "+";
-                Object.assign(addBtn.style, {
-                    padding: "0 12px", cursor: "pointer", background: "#4f5b66",
-                    color: "#fff", border: "none", borderRadius: "4px",
-                    pointerEvents: "auto",
-                });
+                addBtn.className = "premium-button";
+                addBtn.textContent = "Add";
 
                 inputRow.append(input, addBtn);
 
@@ -162,9 +132,8 @@ export function registerCoreNodes(registry, hooks) {
 
                 el._refs = { list };
             },
-            update(node, el, { selected }) {
-                el.style.borderColor = selected ? "#6cf" : "#333";
-
+            update(node, el, _opts) {
+                // Selection is handled by the canvas renderer
                 const { list } = el._refs;
                 const todos = node.state.todos || [];
 
@@ -173,14 +142,17 @@ export function registerCoreNodes(registry, hooks) {
                     const li = document.createElement("li");
                     Object.assign(li.style, {
                         display: "flex", alignItems: "center", padding: "6px 0",
-                        borderBottom: "1px solid #2a2a31"
+                        borderBottom: "1px solid rgba(255,255,255,0.03)"
                     });
 
                     const chk = document.createElement("input");
                     chk.type = "checkbox";
                     chk.checked = todo.done;
-                    chk.style.marginRight = "8px";
-                    chk.style.pointerEvents = "auto";
+                    Object.assign(chk.style, {
+                        marginRight: "8px",
+                        accentColor: "#5568d0",
+                        pointerEvents: "auto",
+                    });
                     chk.onchange = () => {
                         todo.done = chk.checked;
                         hooks.emit("node:updated", node);
@@ -190,16 +162,20 @@ export function registerCoreNodes(registry, hooks) {
                     const span = document.createElement("span");
                     span.textContent = todo.text;
                     span.style.flex = "1";
+                    span.style.fontSize = "11px";
                     span.style.textDecoration = todo.done ? "line-through" : "none";
-                    span.style.color = todo.done ? "#777" : "#eee";
+                    span.style.color = todo.done ? "#404060" : "#8888a8";
 
                     const del = document.createElement("button");
                     del.textContent = "×";
                     Object.assign(del.style, {
-                        background: "none", border: "none", color: "#f44",
-                        cursor: "pointer", fontSize: "16px",
+                        background: "none", border: "none", color: "#4a3a4a",
+                        cursor: "pointer", fontSize: "14px",
                         pointerEvents: "auto",
+                        transition: "color 0.12s ease",
                     });
+                    del.addEventListener("mouseover", () => { del.style.color = "#ff4d4d"; });
+                    del.addEventListener("mouseout", () => { del.style.color = "#4a3a4a"; });
                     del.onclick = () => {
                         node.state.todos = node.state.todos.filter((t) => t.id !== todo.id);
                         hooks.emit("node:updated", node);
@@ -222,13 +198,15 @@ export function registerCoreNodes(registry, hooks) {
     // Group Node
     registry.register("core/Group", {
         title: "Group",
+        color: "#475569", // group (slate)
         size: { w: 240, h: 160 },
         onDraw(node, { ctx, theme, renderer }) {
             const { x, y, w, h } = node.computed;
             const headerH = 24;
-            const color = node.state.color || "#39424e";
-            const bgAlpha = 0.5;
+            const color = node.state.color || node.color || "#39424e";
+            const bgAlpha = 0.4;
             const textColor = theme.text || "#e9e9ef";
+            const r = 4; // Groups can be slightly softer but still sharp
 
             const rgba = (hex, a) => {
                 const c = hex.replace("#", "");
@@ -260,12 +238,12 @@ export function registerCoreNodes(registry, hooks) {
             };
 
             ctx.fillStyle = rgba(color, bgAlpha);
-            roundRect(ctx, x, y, w, h, 10);
+            roundRect(ctx, x, y, w, h, r);
             ctx.fill();
 
-            ctx.fillStyle = rgba(color, 0.3);
+            ctx.fillStyle = rgba(color, 0.2);
             ctx.beginPath();
-            ctx.roundRect(x, y, w, headerH, [10, 10, 0, 0]);
+            ctx.roundRect(x, y, w, headerH, [r, r, 0, 0]);
             ctx.fill();
 
             // Use screen-coordinate text rendering for consistent scale

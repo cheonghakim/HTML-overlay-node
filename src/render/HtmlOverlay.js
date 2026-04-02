@@ -39,7 +39,7 @@ export class HtmlOverlay {
     const header = document.createElement("div");
     header.className = "node-header";
     Object.assign(header.style, {
-      height: "24px",
+      height: "26px",
       flexShrink: "0",
       display: "flex",
       alignItems: "center",

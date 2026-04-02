@@ -10,6 +10,7 @@ import { HtmlOverlay } from "./render/HtmlOverlay.js";
 import { RemoveNodeCmd, ChangeGroupColorCmd } from "./core/commands.js";
 import { Minimap } from "./minimap/Minimap.js";
 import { PropertyPanel } from "./ui/PropertyPanel.js";
+import { HelpOverlay } from "./ui/HelpOverlay.js";
 import { setupDefaultContextMenu as defaultContextMenuSetup } from "./defaults/contextMenu.js";
 
 
@@ -23,6 +24,8 @@ export function createGraphEditor(
     showMinimap = true,
     enablePropertyPanel = true,
     propertyPanelContainer = null,
+    enableHelp = true,
+    helpShortcuts = null,
     setupDefaultContextMenu = true,
     setupContextMenu = null,
     plugins = [],
@@ -171,6 +174,14 @@ export function createGraphEditor(
     });
   }
 
+  // Initialize Help Overlay if enabled
+  let helpOverlay = null;
+  if (enableHelp) {
+    helpOverlay = new HelpOverlay(container, {
+      shortcuts: helpShortcuts,
+    });
+  }
+
   const runner = new Runner({ graph, registry, hooks });
 
   // Attach runner and controller to graph for node access
@@ -212,6 +223,11 @@ export function createGraphEditor(
   });
 
   hooks.on("node:updated", () => {
+    controller.render();
+  });
+
+  hooks.on("graph:deserialize", () => {
+    renderer.setTransform({ scale: 1, offsetX: 0, offsetY: 0 });
     controller.render();
   });
 
@@ -297,6 +313,7 @@ export function createGraphEditor(
       contextMenu.destroy();
       if (propertyPanel) propertyPanel.destroy();
       if (minimap) minimap.destroy();
+      if (helpOverlay) helpOverlay.destroy();
     },
   };
 
