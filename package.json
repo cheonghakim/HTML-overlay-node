@@ -1,6 +1,6 @@
 {
   "name": "html-overlay-node",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "LiteGraph-style node editor with HTML overlay support",
   "main": "./src/index.js",
   "module": "./src/index.js",
