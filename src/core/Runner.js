@@ -7,6 +7,10 @@ export class Runner {
     this._raf = null;
     this._last = 0;
     this.cyclesPerFrame = Math.max(1, cyclesPerFrame | 0);
+    this.executionMode = "run"; // "run" or "step"
+    this.activePlan = null;
+    this.activeStepIndex = -1;
+    this.stepCache = new Map();
   }
 
   isRunning() {
@@ -58,6 +62,10 @@ export class Runner {
     const allConnectedNodes = new Set();
     const execEdgeOrder = []; // exec edge IDs in traversal order
 
+    // Local output cache: nodeId:portId → value
+    // Ensures outputs written by executeNode are immediately readable by subsequent nodes
+    const runCache = new Map();
+
     // Queue items: { nodeId, fromEdgeId }
     const queue = [{ nodeId: startNodeId, fromEdgeId: null }];
     const visited = new Set();
@@ -85,7 +93,7 @@ export class Runner {
               const sourceNode = this.graph.nodes.get(edge.fromNode);
               if (sourceNode && !allConnectedNodes.has(edge.fromNode)) {
                 allConnectedNodes.add(edge.fromNode);
-                this.executeNode(edge.fromNode, dt);
+                this._executeNodeWithCache(edge.fromNode, dt, runCache);
               }
             }
           }
@@ -93,11 +101,11 @@ export class Runner {
       }
 
       // Execute this node
-      this.executeNode(currentNodeId, dt);
+      this._executeNodeWithCache(currentNodeId, dt, runCache);
 
       // Find exec output edges and enqueue next nodes
-      const execOutputs = node.outputs.filter((p) => p.portType === "exec");
-      for (const execOutput of execOutputs) {
+      const execOutputPorts = node.outputs.filter((p) => p.portType === "exec");
+      for (const execOutput of execOutputPorts) {
         for (const edge of this.graph.edges.values()) {
           if (edge.fromNode === currentNodeId && edge.fromPort === execOutput.id) {
             queue.push({ nodeId: edge.toNode, fromEdgeId: edge.id });
@@ -115,6 +123,152 @@ export class Runner {
     }
 
     return { connectedNodes: allConnectedNodes, connectedEdges, execEdgeOrder };
+  }
+
+  setExecutionMode(mode) {
+    this.executionMode = mode;
+    if (mode === "run") this.resetStepping();
+  }
+
+  resetStepping() {
+    this.activePlan = null;
+    this.activeStepIndex = -1;
+    this.stepCache.clear();
+    this.hooks?.emit?.("runner:step-updated", { activeNodeId: null });
+  }
+
+  buildPlan(startNodeId) {
+    const plan = [];
+    const allConnectedNodes = new Set();
+    const queue = [{ nodeId: startNodeId, fromEdgeId: null }];
+    const visited = new Set();
+
+    while (queue.length > 0) {
+      const { nodeId: currentNodeId, fromEdgeId } = queue.shift();
+      if (visited.has(currentNodeId)) continue;
+      visited.add(currentNodeId);
+      allConnectedNodes.add(currentNodeId);
+
+      const node = this.graph.nodes.get(currentNodeId);
+      if (!node) continue;
+
+      // Collect data dependency nodes (in order) for this exec node
+      const dataDeps = [];
+      for (const input of node.inputs) {
+        if (input.portType === "data") {
+          for (const edge of this.graph.edges.values()) {
+            if (edge.toNode === currentNodeId && edge.toPort === input.id) {
+              const srcId = edge.fromNode;
+              if (!allConnectedNodes.has(srcId)) {
+                allConnectedNodes.add(srcId);
+                dataDeps.push(srcId);
+              }
+            }
+          }
+        }
+      }
+
+      // Find ALL incoming edges (both exec and data) to highlight them in Step Mode
+      const incomingEdges = [];
+      for (const edge of this.graph.edges.values()) {
+        if (edge.toNode === currentNodeId) {
+          incomingEdges.push(edge.id);
+        }
+      }
+
+      plan.push({ nodeId: currentNodeId, fromEdgeId, incomingEdges, dataDeps });
+
+      // Enqueue next exec nodes
+      const execOutputs = node.outputs.filter((p) => p.portType === "exec");
+      for (const execOutput of execOutputs) {
+        for (const edge of this.graph.edges.values()) {
+          if (edge.fromNode === currentNodeId && edge.fromPort === execOutput.id) {
+            queue.push({ nodeId: edge.toNode, fromEdgeId: edge.id });
+          }
+        }
+      }
+    }
+
+    return plan;
+  }
+
+  startStepping(startNodeId) {
+    this.stepCache.clear();
+    this.activePlan = this.buildPlan(startNodeId);
+    this.activeStepIndex = 0;
+    const step = this.activePlan[0];
+    this.hooks?.emit?.("runner:step-updated", {
+      activeNodeId: step?.nodeId,
+      activeEdgeIds: step?.incomingEdges || [],
+    });
+    this.start(); // Start the loop to driving animations
+  }
+
+  executeNextStep() {
+    if (!this.activePlan || this.activeStepIndex < 0 || this.activeStepIndex >= this.activePlan.length) {
+      this.resetStepping();
+      return null;
+    }
+
+    const step = this.activePlan[this.activeStepIndex];
+
+    // Execute data deps
+    for (const depId of step.dataDeps) {
+      this._executeNodeWithCache(depId, 0, this.stepCache);
+    }
+
+    // Execute main node
+    this._executeNodeWithCache(step.nodeId, 0, this.stepCache);
+
+    this.activeStepIndex++;
+
+    if (this.activeStepIndex < this.activePlan.length) {
+      const nextStep = this.activePlan[this.activeStepIndex];
+      this.hooks?.emit?.("runner:step-updated", {
+        activeNodeId: nextStep.nodeId,
+        activeEdgeIds: nextStep.incomingEdges || [],
+      });
+    } else {
+      this.hooks?.emit?.("runner:step-updated", { activeNodeId: null });
+      this.resetStepping();
+    }
+
+    return step.nodeId;
+  }
+
+  /** Execute a node using a shared run-local output cache for reliable data passing. */
+  _executeNodeWithCache(nodeId, dt, runCache) {
+    const node = this.graph.nodes.get(nodeId);
+    if (!node) return;
+    const def = this.registry.types.get(node.type);
+    if (!def?.onExecute) return;
+
+    try {
+      def.onExecute(node, {
+        dt,
+        graph: this.graph,
+        getInput: (portName) => {
+          const p = node.inputs.find((i) => i.name === portName) || node.inputs[0];
+          if (!p) return undefined;
+          for (const edge of this.graph.edges.values()) {
+            if (edge.toNode === nodeId && edge.toPort === p.id) {
+              const key = `${edge.fromNode}:${edge.fromPort}`;
+              // Check run-local cache first, then fall back to graph buffer
+              return runCache.has(key) ? runCache.get(key) : this.graph._curBuf().get(key);
+            }
+          }
+          return undefined;
+        },
+        setOutput: (portName, value) => {
+          const p = node.outputs.find((o) => o.name === portName) || node.outputs[0];
+          if (p) {
+            runCache.set(`${node.id}:${p.id}`, value);
+          }
+        },
+      });
+    } catch (err) {
+      this.hooks?.emit?.("error", err);
+    }
   }
 
   findAllNextExecNodes(nodeId) {
@@ -175,7 +329,11 @@ export class Runner {
       this._last = t;
       const dt = dtMs / 1000;
 
-      this.step(this.cyclesPerFrame, dt);
+      // Only execute nodes automatically in "run" mode.
+      // In "step" mode, we only want the loop to fire for animations (via tick event).
+      if (this.executionMode === "run") {
+        this.step(this.cyclesPerFrame, dt);
+      }
 
       this.hooks?.emit?.("runner:tick", {
         time: t,

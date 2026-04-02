@@ -8,7 +8,7 @@ export function registerValueNodes(registry) {
   registry.register("value/Number", {
     title: "Number",
     color: "#3b82f6", // data (blue)
-    size: { w: 140 },
+    size: { w: 140, h: 90 },
     outputs: [{ name: "value", portType: "data", datatype: "number" }],
     onCreate(node) {
       node.state.value = 0;
@@ -22,8 +22,9 @@ export function registerValueNodes(registry) {
         el.classList.add("node-overlay");
 
         body.style.display = "flex";
-        body.style.alignItems = "center";
+        body.style.alignItems = "flex-start"; // Don't center vertically — push to top of padded area
         body.style.justifyContent = "center";
+        body.style.paddingTop = "26px"; // Push input below value port (port bottom ~y=50)
 
         const input = document.createElement("input");
         input.className = "premium-input";

@@ -45,6 +45,18 @@ export class Controller {
     this._onDblClickEvt = this._onDblClick.bind(this);
 
     this._bindEvents();
+
+    // Listen for stepping updates from runner
+    this.hooks.on("runner:step-updated", ({ activeNodeId, activeEdgeIds = [] }) => {
+      this.activeNodes = activeNodeId ? new Set([activeNodeId]) : new Set();
+      this.activeEdges = new Set(activeEdgeIds);
+      this.activeEdgeTimes.clear(); // Clear previous times to ensure fresh animation
+      const now = performance.now();
+      for (const edgeId of activeEdgeIds) {
+        this.activeEdgeTimes.set(edgeId, now);
+      }
+      this.render();
+    });
   }
 
   destroy() {
@@ -406,7 +418,11 @@ export class Controller {
       const dy = w.y - this.resizing.startY;
 
       const minW = Controller.MIN_NODE_WIDTH;
-      const minH = Controller.MIN_NODE_HEIGHT;
+      // Minimum height must fit all port rows
+      const maxPorts = Math.max(n.inputs.length, n.outputs.length);
+      const minH = maxPorts > 0
+        ? Math.max(Controller.MIN_NODE_HEIGHT, 42 + maxPorts * 20)
+        : Controller.MIN_NODE_HEIGHT;
       n.size.width = Math.max(minW, this.resizing.startW + dx);
       n.size.height = Math.max(minH, this.resizing.startH + dy);
 
@@ -760,8 +776,10 @@ export class Controller {
     this.render();
   }
 
-  render() {
+  render(time = performance.now()) {
     const tEdge = this.renderTempEdge();
+    const runner = this.graph.runner;
+    const isStepMode = !!runner && runner.executionMode === "step";
 
     // 1. Draw background (grid, canvas-only nodes) on main canvas
     this.renderer.draw(this.graph, {
@@ -769,7 +787,10 @@ export class Controller {
       tempEdge: null, // Don't draw temp edge on background
       boxSelecting: this.boxSelecting,
       activeEdges: this.activeEdges || new Set(),
+      activeEdgeTimes: this.activeEdgeTimes,
       drawEdges: !this.edgeRenderer, // Only draw edges here if no separate edge renderer
+      time,
+      loopActiveEdges: isStepMode,
     });
 
     // 2. HTML Overlay layer (HTML nodes at z-index 10)
@@ -788,8 +809,9 @@ export class Controller {
         activeEdgeTimes: this.activeEdgeTimes,
         activeNodes: this.activeNodes,
         selection: this.selection,
-        time: performance.now(),
+        time,
         tempEdge: tEdge,
+        loopActiveEdges: isStepMode,
       });
 
       this.edgeRenderer._resetTransform();

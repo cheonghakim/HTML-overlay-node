@@ -32,6 +32,7 @@ export function registerMathNodes(registry) {
             node.state.result = result;
             console.log("[Add] a:", a, "b:", b, "result:", result);
             setOutput("result", result);
+            setOutput("exec", true);
         },
     });
 
@@ -77,6 +78,7 @@ export function registerMathNodes(registry) {
             }
             console.log("[Multiply] a:", a, "b:", b, "result:", result);
             setOutput("result", result);
+            setOutput("exec", true);
         },
     });
 

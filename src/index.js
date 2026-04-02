@@ -190,36 +190,13 @@ export function createGraphEditor(
   graph.controller = controller;
 
   hooks.on("runner:tick", ({ time, dt }) => {
-    renderer.draw(graph, {
-      selection: controller.selection,
-      tempEdge: controller.connecting ? controller.renderTempEdge() : null, // 필요시 helper
-      running: true,
-      time,
-      dt,
-    });
-    htmlOverlay.draw(graph, controller.selection);
+    controller.render(time);
   });
   hooks.on("runner:start", () => {
-    // 첫 프레임 즉시 렌더
-    renderer.draw(graph, {
-      selection: controller.selection,
-      tempEdge: controller.connecting ? controller.renderTempEdge() : null,
-      running: true,
-      time: performance.now(),
-      dt: 0,
-    });
-    htmlOverlay.draw(graph, controller.selection);
+    controller.render(performance.now());
   });
   hooks.on("runner:stop", () => {
-    // 정지 프레임
-    renderer.draw(graph, {
-      selection: controller.selection,
-      tempEdge: controller.connecting ? controller.renderTempEdge() : null,
-      running: false,
-      time: performance.now(),
-      dt: 0,
-    });
-    htmlOverlay.draw(graph, controller.selection);
+    controller.render(performance.now());
   });
 
   hooks.on("node:updated", () => {
@@ -294,6 +271,7 @@ export function createGraphEditor(
     },
     graph,
     renderer,
+    edgeRenderer, // Expose edge renderer for style changes
     controller, // Expose controller for snap-to-grid access
     runner, // Expose runner for trigger
     minimap, // Expose minimap
@@ -305,6 +283,14 @@ export function createGraphEditor(
     render: () => controller.render(),
     start: () => runner.start(),
     stop: () => runner.stop(),
+    setEdgeStyle: (style) => {
+      renderer.setEdgeStyle(style);
+      edgeRenderer.setEdgeStyle(style);
+    },
+    setExecutionMode: (mode) => {
+      runner.setExecutionMode(mode);
+      controller.render(); // Redraw to update overlays
+    },
     destroy: () => {
       runner.stop();
       ro.disconnect();

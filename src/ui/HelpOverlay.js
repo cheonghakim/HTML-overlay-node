@@ -59,7 +59,7 @@ export class HelpOverlay {
     // Create Toggle Button
     this.toggleBtn = document.createElement("div");
     this.toggleBtn.id = "helpToggle";
-    this.toggleBtn.title = "Keyboard shortcuts (?)";
+    this.toggleBtn.title = "단축키 (?)";
     this.toggleBtn.textContent = "?";
     this.container.appendChild(this.toggleBtn);
 

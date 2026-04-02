@@ -29,7 +29,7 @@ export class CanvasRenderer {
         port: "#4f46e5",
         portExec: "#10b981",
         edge: "rgba(255, 255, 255, 0.12)",
-        edgeActive: "#6366f1",
+        edgeActive: "#34c38f", // green for active edge animation
         accent: "#6366f1",
         accentBright: "#818cf8",
         accentGlow: "rgba(99, 102, 241, 0.25)",
@@ -114,12 +114,7 @@ export class CanvasRenderer {
     text,
     lx,
     ly,
-    {
-      fontPx = 11,
-      color = this.theme.text,
-      align = "left",
-      baseline = "alphabetic",
-    } = {}
+    { fontPx = 11, color = this.theme.text, align = "left", baseline = "alphabetic" } = {}
   ) {
     const { ctx } = this;
     const { x: sx, y: sy } = this.worldToScreen(lx, ly);
@@ -194,8 +189,11 @@ export class CanvasRenderer {
       selection = new Set(),
       tempEdge = null,
       time = performance.now(),
+      activeNodes = new Set(), // Now explicitly passing active nodes
       activeEdges = new Set(),
+      activeEdgeTimes = new Map(),
       drawEdges = true,
+      loopActiveEdges = false,
     } = {}
   ) {
     graph.updateWorldTransforms();
@@ -218,7 +216,7 @@ export class CanvasRenderer {
 
     // 2. Draw Edges
     if (drawEdges) {
-      ctx.lineWidth = 1.5 / this.scale;
+      ctx.lineWidth = 2.5 / this.scale;
 
       for (const e of graph.edges.values()) {
         const isActive = activeEdges && activeEdges.has(e.id);
@@ -229,13 +227,18 @@ export class CanvasRenderer {
           ctx.shadowColor = this.theme.edgeActive;
           ctx.shadowBlur = 8 / this.scale;
           ctx.strokeStyle = this.theme.edgeActive;
-          ctx.lineWidth = 2 / this.scale;
+          ctx.lineWidth = 3 / this.scale;
           ctx.setLineDash([]);
           this._drawEdge(graph, e);
           ctx.restore();
 
           // Animated flowing dot
-          const dotT = ((time / 1000) * 1.2) % 1;
+          const activationTime = activeEdgeTimes?.get(e.id) ?? time;
+          const flowSpeed = this.theme.flowSpeed || 150;
+          const duration = (edgeLen / flowSpeed) * 1000;
+          const rawT = (time - activationTime) / duration;
+          const dotT = loopActiveEdges ? ((time / 1000) * (flowSpeed / edgeLen)) % 1 : ((time / 1000) * 1.2) % 1;
+
           const dotPos = this._getEdgeDotPosition(graph, e, dotT);
           if (dotPos) {
             ctx.save();
@@ -250,7 +253,7 @@ export class CanvasRenderer {
         } else {
           ctx.setLineDash([]);
           ctx.strokeStyle = theme.edge;
-          ctx.lineWidth = 1.5 / this.scale;
+          ctx.lineWidth = 2.5 / this.scale;
           this._drawEdge(graph, e);
         }
       }
@@ -264,17 +267,23 @@ export class CanvasRenderer {
       const prevDash = this.ctx.getLineDash();
       this.ctx.setLineDash([5 / this.scale, 5 / this.scale]);
       this.ctx.strokeStyle = this._rgba(this.theme.accentBright, 0.7);
-      this.ctx.lineWidth = 1.5 / this.scale;
+      this.ctx.lineWidth = 2.5 / this.scale;
 
       let ptsForArrow = null;
       if (this.edgeStyle === "line") {
         this._drawLine(a.x, a.y, b.x, b.y);
-        ptsForArrow = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
+        ptsForArrow = [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y },
+        ];
       } else if (this.edgeStyle === "orthogonal") {
         ptsForArrow = this._drawOrthogonal(a.x, a.y, b.x, b.y);
       } else {
         this._drawCurve(a.x, a.y, b.x, b.y);
-        ptsForArrow = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
+        ptsForArrow = [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y },
+        ];
       }
 
       this.ctx.setLineDash(prevDash);
@@ -294,18 +303,23 @@ export class CanvasRenderer {
         const def = this.registry?.types?.get(n.type);
         const hasHtmlOverlay = !!def?.html;
 
-        // Draw node's base aesthetics (headers, colors, rounding) always on canvas.
-        // Transparent HTML overlay sits on top for interactive elements.
-        this._drawNode(n, sel, !hasHtmlOverlay ? true : false); 
-        
+        this._drawNode(n, sel, !hasHtmlOverlay ? true : false);
+
         if (def?.onDraw) {
           def.onDraw(n, { ctx, theme, renderer: this });
         }
-        
-        // Ensure ports are visible
+
         if (hasHtmlOverlay) {
           this._drawPorts(n);
         }
+      }
+    }
+
+    // 4. Highlight Active Nodes (Marching Ants)
+    if (activeNodes.size > 0) {
+      for (const nodeId of activeNodes) {
+        const node = graph.nodes.get(nodeId);
+        if (node) this._drawActiveNodeBorder(node, time);
       }
     }
 
@@ -316,7 +330,10 @@ export class CanvasRenderer {
     const c = hex.replace("#", "");
     const n = parseInt(
       c.length === 3
-        ? c.split("").map((x) => x + x).join("")
+        ? c
+            .split("")
+            .map((x) => x + x)
+            .join("")
         : c,
       16
     );
@@ -336,14 +353,14 @@ export class CanvasRenderer {
     const typeDef = this.registry?.types?.get(node.type);
     const categoryColor = node.color || typeDef?.color || theme.accent;
 
-    // Selection glow — same radius as node, offset 2px outside
+    // Selection glow — white, slightly offset outside node
     if (selected) {
       ctx.save();
-      ctx.shadowColor = theme.accentGlow;
-      ctx.shadowBlur = 10 / this.scale;
-      ctx.strokeStyle = theme.accentBright;
-      ctx.lineWidth = 2 / this.scale;
-      const pad = 1.5 / this.scale;
+      ctx.shadowColor = "rgba(255,255,255,0.3)";
+      ctx.shadowBlur = 8 / this.scale;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5 / this.scale;
+      const pad = 8 / this.scale;
       roundRect(ctx, x - pad, y - pad, w + pad * 2, h + pad * 2, r + pad);
       ctx.stroke();
       ctx.restore();
@@ -361,7 +378,7 @@ export class CanvasRenderer {
 
     // Node body
     ctx.fillStyle = theme.node;
-    ctx.strokeStyle = selected ? theme.accentBright : theme.nodeBorder;
+    ctx.strokeStyle = selected ? "rgba(255,255,255,0.4)" : theme.nodeBorder;
     ctx.lineWidth = 1 / this.scale;
     roundRect(ctx, x, y, w, h, r);
     ctx.fill();
@@ -381,9 +398,7 @@ export class CanvasRenderer {
     ctx.restore();
 
     // Header bottom separator
-    ctx.strokeStyle = selected
-      ? this._rgba(theme.accentBright, 0.3)
-      : this._rgba(theme.nodeBorder, 0.6);
+    ctx.strokeStyle = selected ? "rgba(255,255,255,0.2)" : this._rgba(theme.nodeBorder, 0.6);
     ctx.lineWidth = 1 / this.scale;
     ctx.beginPath();
     ctx.moveTo(x, y + headerH);
@@ -437,6 +452,53 @@ export class CanvasRenderer {
         });
       }
     });
+  }
+
+  _drawActiveNodeBorder(node, time) {
+    const { ctx, theme } = this;
+    const { x, y, w, h } = node.computed;
+    const r = node.radius || 12;
+    const speed = 30; // pixels per second
+    const dashLen = 6;
+    const gapLen = 6;
+
+    ctx.save();
+    // 1. Exterior Glow
+    ctx.shadowColor = theme.accentBright || "#7080d8";
+    ctx.shadowBlur = (12 + Math.sin(time / 200) * 4) / this.scale; // Subtle pulse
+
+    // 2. Marching Ants Border
+    ctx.strokeStyle = theme.accentBright || "#7080d8";
+    ctx.lineWidth = 3 / this.scale;
+    // Set a dashed line that moves
+    ctx.setLineDash([dashLen / this.scale, gapLen / this.scale]);
+    // Offset increases over time to move clockwise
+    ctx.lineDashOffset = -(time / 1000) * speed / this.scale;
+
+    // Use a custom roundRect for the border
+    ctx.beginPath();
+    const pad = 2 / this.scale;
+    this._roundRect(ctx, x - pad, y - pad, w + pad * 2, h + pad * 2, r + pad);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Internal helper for rounded rectangles if not using the browser's native one
+  _roundRect(ctx, x, y, w, h, r) {
+    if (typeof r === "number") {
+      r = { tl: r, tr: r, br: r, bl: r };
+    }
+    ctx.beginPath();
+    ctx.moveTo(x + r.tl, y);
+    ctx.lineTo(x + w - r.tr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+    ctx.lineTo(x + w, y + h - r.br);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+    ctx.lineTo(x + r.bl, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+    ctx.lineTo(x, y + r.tl);
+    ctx.quadraticCurveTo(x, y, x + r.tl, y);
+    ctx.closePath();
   }
 
   _drawPortShape(cx, cy, portType) {
@@ -494,15 +556,15 @@ export class CanvasRenderer {
 
   /** Selection border for HTML overlay nodes, drawn on the edge canvas */
   _drawHtmlSelectionBorder(node) {
-    const { ctx, theme } = this;
+    const { ctx } = this;
     const { x, y, w, h } = node.computed;
-    const r = 2; // Sharp 2px rounding
-    const pad = 1.5 / this.scale;
+    const r = 2;
+    const pad = 2.5 / this.scale;
 
     ctx.save();
-    ctx.shadowColor = theme.accentGlow;
-    ctx.shadowBlur = 14 / this.scale;
-    ctx.strokeStyle = theme.accentBright;
+    ctx.shadowColor = "rgba(255,255,255,0.3)";
+    ctx.shadowBlur = 8 / this.scale;
+    ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 1.5 / this.scale;
     roundRect(ctx, x - pad, y - pad, w + pad * 2, h + pad * 2, r);
     ctx.stroke();
@@ -511,26 +573,45 @@ export class CanvasRenderer {
 
   /** Rotating dashed border drawn on the edge canvas for executing nodes */
   _drawActiveNodeBorder(node, time) {
-    const { ctx, theme } = this;
+    const { ctx } = this;
     const { x, y, w, h } = node.computed;
     const r = 2;
-    const pad = 2.5 / this.scale;
+    const pad = 8 / this.scale; // Same gap as selection border
 
     const dashLen = 8 / this.scale;
     const gapLen = 6 / this.scale;
-    // Slow clockwise rotation: positive lineDashOffset moves the pattern forward along path
     const offset = -(time / 1000) * (50 / this.scale);
 
     ctx.save();
     ctx.setLineDash([dashLen, gapLen]);
     ctx.lineDashOffset = offset;
-    ctx.strokeStyle = this._rgba(theme.portExec, 0.9);
-    ctx.lineWidth = 1.5 / this.scale;
-    ctx.shadowColor = theme.portExec;
-    ctx.shadowBlur = 4 / this.scale;
+    ctx.strokeStyle = "rgba(74,176,217,0.9)"; // Dark sky blue
+    ctx.lineWidth = 2.0 / this.scale;
+    ctx.shadowColor = "#4ab0d9";
+    ctx.shadowBlur = 6 / this.scale;
     roundRect(ctx, x - pad, y - pad, w + pad * 2, h + pad * 2, r + pad);
     ctx.stroke();
     ctx.restore();
+  }
+
+  /** Approximate arc length of an edge in world coordinates */
+  _getEdgeLength(graph, e) {
+    const from = graph.nodes.get(e.fromNode);
+    const to = graph.nodes.get(e.toNode);
+    if (!from || !to) return 200;
+    const iOut = from.outputs.findIndex((p) => p.id === e.fromPort);
+    const iIn = to.inputs.findIndex((p) => p.id === e.toPort);
+    const pr1 = portRect(from, null, iOut, "out");
+    const pr2 = portRect(to, null, iIn, "in");
+    const x1 = pr1.x + pr1.w / 2,
+      y1 = pr1.y + pr1.h / 2;
+    const x2 = pr2.x + pr2.w / 2,
+      y2 = pr2.y + pr2.h / 2;
+    if (this.edgeStyle === "orthogonal") {
+      return Math.abs(x2 - x1) + Math.abs(y2 - y1);
+    }
+    const chord = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+    return this.edgeStyle === "bezier" ? chord * 1.4 : chord;
   }
 
   _drawEdge(graph, e) {
@@ -541,8 +622,10 @@ export class CanvasRenderer {
     const iIn = to.inputs.findIndex((p) => p.id === e.toPort);
     const pr1 = portRect(from, null, iOut, "out");
     const pr2 = portRect(to, null, iIn, "in");
-    const x1 = pr1.x + pr1.w / 2, y1 = pr1.y + pr1.h / 2;
-    const x2 = pr2.x + pr2.w / 2, y2 = pr2.y + pr2.h / 2;
+    const x1 = pr1.x + pr1.w / 2,
+      y1 = pr1.y + pr1.h / 2;
+    const x2 = pr2.x + pr2.w / 2,
+      y2 = pr2.y + pr2.h / 2;
 
     if (this.edgeStyle === "line") {
       this._drawLine(x1, y1, x2, y2);
@@ -562,8 +645,10 @@ export class CanvasRenderer {
     const iIn = to.inputs.findIndex((p) => p.id === e.toPort);
     const pr1 = portRect(from, null, iOut, "out");
     const pr2 = portRect(to, null, iIn, "in");
-    const x1 = pr1.x + pr1.w / 2, y1 = pr1.y + pr1.h / 2;
-    const x2 = pr2.x + pr2.w / 2, y2 = pr2.y + pr2.h / 2;
+    const x1 = pr1.x + pr1.w / 2,
+      y1 = pr1.y + pr1.h / 2;
+    const x2 = pr2.x + pr2.w / 2,
+      y2 = pr2.y + pr2.h / 2;
 
     if (this.edgeStyle === "bezier") {
       const dx = Math.max(40, Math.abs(x2 - x1) * 0.4);
@@ -608,7 +693,8 @@ export class CanvasRenderer {
     ];
 
     const { ctx } = this;
-    const prevJoin = ctx.lineJoin, prevCap = ctx.lineCap;
+    const prevJoin = ctx.lineJoin,
+      prevCap = ctx.lineCap;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     this._drawPolyline(pts);
@@ -636,6 +722,7 @@ export class CanvasRenderer {
       selection = new Set(),
       time = performance.now(),
       tempEdge = null,
+      loopActiveEdges = false,
     } = {}
   ) {
     this._resetTransform();
@@ -655,14 +742,21 @@ export class CanvasRenderer {
         ctx.shadowColor = theme.edgeActive;
         ctx.shadowBlur = 6 / this.scale;
         ctx.strokeStyle = theme.edgeActive;
-        ctx.lineWidth = 2 / this.scale;
+        ctx.lineWidth = 3 / this.scale;
         ctx.setLineDash([]);
         this._drawEdge(graph, e);
         ctx.restore();
 
-        // Dot position: 0→1 over STEP_DURATION from activation time
+        // Dot position: use configurable flow speed (default 150 px/sec)
+        const flowSpeed = this.theme.flowSpeed || 150;
         const activationTime = activeEdgeTimes.get(e.id) ?? time;
-        const dotT = Math.min(1, (time - activationTime) / 620);
+        const edgeLen = Math.max(50, this._getEdgeLength(graph, e));
+        const duration = (edgeLen / flowSpeed) * 1000; // ms for this edge
+
+        // Loop animation if requested (e.g. in Step Mode)
+        const rawT = (time - activationTime) / duration;
+        const dotT = loopActiveEdges ? ((time / 1000) * (flowSpeed / edgeLen)) % 1 : Math.min(1, rawT);
+
         const dotPos = this._getEdgeDotPosition(graph, e, dotT);
         if (dotPos) {
           ctx.save();
@@ -677,7 +771,7 @@ export class CanvasRenderer {
       } else {
         ctx.setLineDash([]);
         ctx.strokeStyle = theme.edge;
-        ctx.lineWidth = 1.5 / this.scale;
+        ctx.lineWidth = 2.5 / this.scale;
         this._drawEdge(graph, e);
       }
     }
@@ -706,17 +800,23 @@ export class CanvasRenderer {
       const prevDash = this.ctx.getLineDash();
       this.ctx.setLineDash([5 / this.scale, 5 / this.scale]);
       this.ctx.strokeStyle = this._rgba(this.theme.accentBright, 0.7);
-      this.ctx.lineWidth = 1.5 / this.scale;
+      this.ctx.lineWidth = 2.5 / this.scale;
 
       let ptsForArrow = null;
       if (this.edgeStyle === "line") {
         this._drawLine(a.x, a.y, b.x, b.y);
-        ptsForArrow = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
+        ptsForArrow = [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y },
+        ];
       } else if (this.edgeStyle === "orthogonal") {
         ptsForArrow = this._drawOrthogonal(a.x, a.y, b.x, b.y);
       } else {
         this._drawCurve(a.x, a.y, b.x, b.y);
-        ptsForArrow = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
+        ptsForArrow = [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y },
+        ];
       }
 
       this.ctx.setLineDash(prevDash);

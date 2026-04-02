@@ -175,6 +175,51 @@ body {
   background: rgba(85, 104, 208, 0.06);
 }
 
+/* ── Mode Toggle ────────────────────────────────────────────── */
+.mode-toggle {
+  display: flex;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  gap: 2px;
+}
+
+.mode-toggle button {
+  padding: 3px 12px !important;
+  font-size: 10px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent !important;
+  opacity: 0.4;
+}
+
+.mode-toggle button:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.mode-toggle button.active {
+  opacity: 1;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+/* Run Mode Active State (Emerald) */
+.mode-toggle button[data-mode="run"].active {
+  color: #10b981 !important;
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+}
+
+/* Step Mode Active State (Violet) */
+.mode-toggle button[data-mode="step"].active {
+  color: #a78bfa !important;
+  background: rgba(139, 92, 246, 0.1) !important;
+  border-color: rgba(139, 92, 246, 0.3) !important;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
+}
+
 /* ── Help Overlay ─────────────────────────────────────────────── */
 #helpOverlay {
   position: absolute;

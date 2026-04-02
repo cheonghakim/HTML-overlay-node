@@ -1,198 +1,214 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Graph Editor Demo (with Runner)</title>
+    <link rel="stylesheet" href="./src/ui/PropertyPanel.css" />
+    <link rel="stylesheet" href="./index.css" />
 
-<head>
-  <meta charset="utf-8" />
-  <title>Graph Editor Demo (with Runner)</title>
-  <link rel="stylesheet" href="./src/ui/PropertyPanel.css" />
-  <link rel="stylesheet" href="./index.css" />
-</head>
+    <link rel="icon" href="./public/img/favicon.svg" />
+  </head>
 
-<body>
-  <div id="wrap">
-    <main class="content-root" id="graph-editor">
-      <div id="toolbar">
-        <button id="saveBtn" title="Save graph to JSON file">Save</button>
-        <button id="loadBtn" title="Load graph from JSON file">Load</button>
-        <div class="toolbar-sep"></div>
-        <label>
-          <span>Edges</span>
-          <select id="edgeStyleSelector">
-            <option value="bezier">Curved</option>
-            <option value="orthogonal" selected>Orthogonal</option>
-            <option value="line">Straight</option>
-          </select>
-        </label>
-        <div class="toolbar-sep"></div>
-        <div class="indicator" id="snapIndicator">Snap</div>
-      </div>
+  <body>
+    <div id="wrap">
+      <main class="content-root" id="graph-editor">
+        <div id="toolbar">
+          <button id="saveBtn" title="JSON 파일 저장">Save</button>
+          <button id="loadBtn" title="JSON 파일 불러오기">Load</button>
+          <div class="toolbar-sep"></div>
+          <label>
+            <span>Edges</span>
+            <select id="edgeStyleSelector">
+              <option value="bezier">Curved</option>
+              <option value="orthogonal" selected>Orthogonal</option>
+              <option value="line">Straight</option>
+            </select>
+          </label>
+          <div class="toolbar-sep"></div>
+          <div class="mode-toggle" id="modeToggle">
+            <button class="active" data-mode="run" title="자동으로 모든 노드 실행">Run</button>
+            <button data-mode="step" title="Step-by-step으로 실행">Step</button>
+          </div>
+          <div class="toolbar-sep"></div>
+          <div class="indicator" id="snapIndicator">Snap</div>
+        </div>
+      </main>
+    </div>
+    <script type="module">
+      import { createGraphEditor } from "./src/index.js";
+      import { registerAllNodes } from "./src/nodes/index.js";
 
-    </main>
-  </div>
-  <script type="module">
-    import { createGraphEditor } from "./src/index.js";
-    import { registerAllNodes } from "./src/nodes/index.js";
-
-    // One-liner Initialization!
-    const editor = createGraphEditor("#graph-editor", {
-      theme: 'dark',
-      autorun: false,
-      showMinimap: true,
-      enablePropertyPanel: true,
-      enableHelp: true // New modular help system!
-    });
-
-    // Expose editor to window for access from nodes
-    window.editor = editor;
-
-    // Register all example nodes
-    registerAllNodes(editor.registry, editor.hooks);
-
-    // Edge style selector
-    const edgeStyleSelector = document.getElementById("edgeStyleSelector");
-    edgeStyleSelector.addEventListener("change", (e) => {
-      editor.renderer.setEdgeStyle(e.target.value);
-      editor.render();
-    });
-
-    // Update snap indicator when G is pressed
-    window.addEventListener('keydown', (e) => {
-      if (e.key.toLowerCase() === 'g' && !e.ctrlKey && !e.metaKey && editor.controller) {
-        setTimeout(() => {
-          snapIndicator.textContent = `Snap: ${editor.controller.snapToGrid ? "ON" : "OFF"}`;
-          snapIndicator.classList.toggle("active", editor.controller.snapToGrid);
-        }, 10);
-      }
-    });
-
-    // Wrap editor.render to update snap indicator
-    const originalRender = editor.render.bind(editor);
-    editor.render = function () {
-      originalRender();
-
-      // Update snap indicator
-      if (editor.controller) {
-        snapIndicator.textContent = `Snap: ${editor.controller.snapToGrid ? "ON" : "OFF"}`;
-        snapIndicator.classList.toggle("active", editor.controller.snapToGrid);
-      }
-    };
-
-    // Initial render
-    editor.render();
-
-    // Create example node flow
-    async function createExampleFlow() {
-      const response = await fetch("example.json");
-      const jsonData = await response.json();
-      editor.graph.clear();
-      editor.graph.fromJSON(jsonData);
-
-      // Clear HTML overlay to force re-initialization with new state values
-      if (editor.htmlOverlay) {
-        editor.htmlOverlay.clear();
-      }
-
-      // Re-initialize Trigger nodes after loading (restore runner/controller refs)
-      for (const node of editor.graph.nodes.values()) {
-        if (node.type === "util/Trigger") {
-          node.__runnerRef = editor.runner;
-          node.__controllerRef = editor.controller;
-        }
-      }
-
-      editor.render();
-    }
-
-    // Create example flow on startup
-    createExampleFlow();
-
-    // Start runner so the flow executes
-    // editor.start();
-
-
-
-    // Save/Load functionality
-    document.getElementById("saveBtn")?.addEventListener("click", () => {
-      let saved = editor.graph.toJSON();
-      const mime = "application/json";
-      const blob = new Blob([JSON.stringify(saved, null, 2)], {
-        type: mime,
+      // One-liner Initialization!
+      const editor = createGraphEditor("#graph-editor", {
+        theme: "dark",
+        autorun: false,
+        showMinimap: true,
+        enablePropertyPanel: true,
+        enableHelp: true, // New modular help system!
       });
 
-      const url = changeFileToUrl(blob);
-      const fileName = "graph";
+      // Expose editor to window for access from nodes
+      window.editor = editor;
 
-      // Download element
-      const downloadLink = document.createElement("a");
-      downloadLink.href = url;
-      downloadLink.download = `${fileName}.json`;
+      // Register all example nodes
+      registerAllNodes(editor.registry, editor.hooks);
 
-      // Download
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
+      // Edge style selector
+      const edgeStyleSelector = document.getElementById("edgeStyleSelector");
+      edgeStyleSelector.addEventListener("change", (e) => {
+        editor.setEdgeStyle(e.target.value);
+        editor.render();
+      });
 
-      // Cleanup
-      document.body.removeChild(downloadLink);
-      revokeURL(url);
-    });
+      // Mode toggle functionality
+      const modeToggle = document.getElementById("modeToggle");
+      modeToggle?.addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
 
-    document.getElementById("loadBtn")?.addEventListener("click", () => {
-      const changeEvt = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
+        const mode = btn.dataset.mode;
+        editor.setExecutionMode(mode);
 
-          reader.onload = async (e) => {
-            try {
-              // Clear and load
-              editor.graph.clear();
-              const jsonData = JSON.parse(e.target.result);
-              editor.graph.fromJSON(jsonData);
-              editor.render();
+        // UI update
+        modeToggle.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
 
-              // Cleanup
-              input.removeEventListener("change", changeEvt);
-            } catch (error) {
-              console.error(error);
-              alert("Failed to load file. Please check the file format.");
-            }
-          };
+      // Update snap indicator when G is pressed
+      window.addEventListener("keydown", (e) => {
+        if (e.key.toLowerCase() === "g" && !e.ctrlKey && !e.metaKey && editor.controller) {
+          setTimeout(() => {
+            snapIndicator.textContent = `Snap: ${editor.controller.snapToGrid ? "ON" : "OFF"}`;
+            snapIndicator.classList.toggle("active", editor.controller.snapToGrid);
+          }, 10);
+        }
+      });
 
-          // Read file as text
-          reader.readAsText(file);
+      // Wrap editor.render to update snap indicator
+      const originalRender = editor.render.bind(editor);
+      editor.render = function () {
+        originalRender();
+
+        // Update snap indicator
+        if (editor.controller) {
+          snapIndicator.textContent = `Snap: ${editor.controller.snapToGrid ? "ON" : "OFF"}`;
+          snapIndicator.classList.toggle("active", editor.controller.snapToGrid);
         }
       };
-      const input = document.createElement("input");
-      input.accept = ".json";
-      input.type = "file";
-      input.multiple = false;
-      input.click();
-      input.addEventListener("change", changeEvt);
-    });
 
-    function revokeURL(objectUrl) {
-      try {
-        if (window.URL) {
-          window.URL.revokeObjectURL(objectUrl);
-        } else if (window.webkitURL) {
-          window.webkitURL.revokeObjectURL(objectUrl);
+      // Initial render
+      editor.render();
+
+      // Create example node flow
+      async function createExampleFlow() {
+        const response = await fetch("example.json");
+        const jsonData = await response.json();
+        editor.graph.clear();
+        editor.graph.fromJSON(jsonData);
+
+        // Clear HTML overlay to force re-initialization with new state values
+        if (editor.htmlOverlay) {
+          editor.htmlOverlay.clear();
         }
-      } catch (error) {
-        console.error(error);
-      }
-    }
 
-    function changeFileToUrl(file) {
-      // 부차적인 방법
-      if (window.URL) {
-        return window.URL.createObjectURL(file);
-      } else if (window.webkitURL) {
-        return window.webkitURL.createObjectURL(file);
-      } else {
-        return null;
-      }
-    }
-  </script>
-</body>
+        // Re-initialize Trigger nodes after loading (restore runner/controller refs)
+        for (const node of editor.graph.nodes.values()) {
+          if (node.type === "util/Trigger") {
+            node.__runnerRef = editor.runner;
+            node.__controllerRef = editor.controller;
+          }
+        }
 
+        editor.render();
+      }
+
+      // Create example flow on startup
+      createExampleFlow();
+
+      // Start runner so the flow executes
+      // editor.start();
+
+      // Save/Load functionality
+      document.getElementById("saveBtn")?.addEventListener("click", () => {
+        let saved = editor.graph.toJSON();
+        const mime = "application/json";
+        const blob = new Blob([JSON.stringify(saved, null, 2)], {
+          type: mime,
+        });
+
+        const url = changeFileToUrl(blob);
+        const fileName = "graph";
+
+        // Download element
+        const downloadLink = document.createElement("a");
+        downloadLink.href = url;
+        downloadLink.download = `${fileName}.json`;
+
+        // Download
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+
+        // Cleanup
+        document.body.removeChild(downloadLink);
+        revokeURL(url);
+      });
+
+      document.getElementById("loadBtn")?.addEventListener("click", () => {
+        const changeEvt = (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+
+            reader.onload = async (e) => {
+              try {
+                // Clear and load
+                editor.graph.clear();
+                const jsonData = JSON.parse(e.target.result);
+                editor.graph.fromJSON(jsonData);
+                editor.render();
+
+                // Cleanup
+                input.removeEventListener("change", changeEvt);
+              } catch (error) {
+                console.error(error);
+                alert("Failed to load file. Please check the file format.");
+              }
+            };
+
+            // Read file as text
+            reader.readAsText(file);
+          }
+        };
+        const input = document.createElement("input");
+        input.accept = ".json";
+        input.type = "file";
+        input.multiple = false;
+        input.click();
+        input.addEventListener("change", changeEvt);
+      });
+
+      function revokeURL(objectUrl) {
+        try {
+          if (window.URL) {
+            window.URL.revokeObjectURL(objectUrl);
+          } else if (window.webkitURL) {
+            window.webkitURL.revokeObjectURL(objectUrl);
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      function changeFileToUrl(file) {
+        // 부차적인 방법
+        if (window.URL) {
+          return window.URL.createObjectURL(file);
+        } else if (window.webkitURL) {
+          return window.webkitURL.createObjectURL(file);
+        } else {
+          return null;
+        }
+      }
+    </script>
+  </body>
 </html>

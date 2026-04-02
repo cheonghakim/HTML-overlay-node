@@ -111,7 +111,7 @@ export class HtmlOverlay {
       const def = this.registry.types.get(node.type);
 
       // render 함수가 있거나, html 설정 객체가 있으면 처리
-      const hasHtml = !!(def?.html);
+      const hasHtml = !!def?.html;
       if (!hasHtml) continue;
 
       const el = this._ensureNodeElement(node, def, graph);
@@ -130,12 +130,15 @@ export class HtmlOverlay {
         def.html.update(node, el, {
           selected: selection.has(node.id),
           header: parts.header,
-          body: parts.body
+          body: parts.body,
         });
       }
 
       seen.add(node.id);
     }
+
+    // ── Interactive Stepping Play Button ─────────────────────
+    this._drawStepOverlay(graph);
 
     // 없어진 노드 제거
     for (const [id, el] of this.nodes) {
@@ -144,6 +147,65 @@ export class HtmlOverlay {
         this.nodes.delete(id);
       }
     }
+  }
+
+  _drawStepOverlay(graph) {
+    const runner = graph.runner;
+    if (!runner || runner.executionMode !== "step" || !runner.activePlan) {
+      if (this._stepBtn) {
+        this._stepBtn.style.display = "none";
+      }
+      return;
+    }
+
+    const nextStep = runner.activePlan[runner.activeStepIndex];
+    if (!nextStep) {
+      if (this._stepBtn) this._stepBtn.style.display = "none";
+      return;
+    }
+
+    const node = graph.nodes.get(nextStep.nodeId);
+    if (!node) return;
+
+    if (!this._stepBtn) {
+      this._stepBtn = document.createElement("button");
+      this._stepBtn.className = "step-play-button";
+      this._stepBtn.innerHTML = "▶";
+      Object.assign(this._stepBtn.style, {
+        position: "absolute",
+        zIndex: "100",
+        width: "20px",
+        height: "20px",
+        borderRadius: "4px",
+        border: "none",
+        background: "transparent",
+        color: "white",
+        fontSize: "12px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        // boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+        pointerEvents: "auto",
+        transition: "transform 0.1s, background 0.2s",
+      });
+      this._stepBtn.addEventListener("mouseover", () => {
+        this._stepBtn.style.transform = "scale(1)";
+      });
+      this._stepBtn.addEventListener("mouseout", () => {
+        this._stepBtn.style.transform = "scale(1)";
+      });
+      this._stepBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        runner.executeNextStep();
+      });
+      this.container.appendChild(this._stepBtn);
+    }
+
+    // Position the button in the top-right corner of the node (header area)
+    this._stepBtn.style.display = "flex";
+    this._stepBtn.style.left = `${node.computed.x + node.computed.w - 26}px`;
+    this._stepBtn.style.top = `${node.computed.y + 2}px`;
   }
 
   /**

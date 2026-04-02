@@ -278,14 +278,19 @@ export class Graph {
     const outCount = def.outputs?.length || 0;
     const maxPorts = Math.max(inCount, outCount);
     const headerHeight = 26;
-    const padding = 8; // tighter buffer
-    const portSpacing = 20; // compact spacing
-    
+    const portSpacing = 20;
+
+    if (def.html) {
+      // For HTML overlay nodes: reserve space for content BELOW all port rows.
+      // Port idx N bottom: headerHeight + 8 + N*portSpacing + portSpacing/2 + 6
+      //                  = 50 + N*portSpacing (for N=0: 50, N=1: 70, ...)
+      // Add ~50px for HTML content + bottom padding.
+      const lastPortBottom = maxPorts > 0 ? 50 + (maxPorts - 1) * portSpacing : 26;
+      return Math.max(lastPortBottom + 50, 90);
+    }
+
+    const padding = 8;
     let h = headerHeight + padding + (maxPorts * portSpacing) + padding;
-    
-    // Add extra space if it has HTML overlay to prevent overlap with ports
-    if (def.html) h += 16;
-    
-    return Math.max(h, 40); // Minimum height 40
+    return Math.max(h, 40);
   }
 }
