@@ -8,7 +8,7 @@
 ---
 
 ## 🛝Demo
-- [https://cheonghakim.github.io/HTML-overlay-node/**](https://cheonghakim.github.io/HTML-overlay-node/)**
+- **[https://cheonghakim.github.io/HTML-overlay-node/](https://cheonghakim.github.io/HTML-overlay-node/)**
 
 ## ✨ 핵심 기능 (Key Features)
 
