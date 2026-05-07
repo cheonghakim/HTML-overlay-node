@@ -3,7 +3,54 @@
 [![npm version](https://img.shields.io/npm/v/html-overlay-node.svg)](https://www.npmjs.com/package/html-overlay-node)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**HTML-overlay-Node**는 Canvas의 고성능 렌더링과 HTML의 유연한 UI 인터페이스를 결합한 전문가용 노드 에디터 엔진입니다. 단순한 시각화를 넘어, 복잡한 로직 설계와 실시간 실행 환경에 최적화된 날카롭고 세련된 엔지니어링 경험을 제공합니다.
+**HTML-overlay-Node** is a professional-grade node editor engine that combines the high-performance rendering of Canvas with the flexible UI interface of HTML.
+**HTML-overlay-Node**는 Canvas의 고성능 렌더링과 HTML의 유연한 UI 인터페이스를 결합한 전문가용 노드 에디터 엔진입니다.
+
+---
+
+## 🎯 Why HTML-overlay-Node? (의도 및 목적)
+
+### The Problem
+
+Traditional node editors often force a choice:
+
+- **Pure Canvas**: High performance for many nodes/edges, but extremely difficult to style or implement complex interactive widgets (inputs, dropdowns).
+- **Pure DOM**: Easy to style and rich interactivity, but performance degrades rapidly with complex edge animations or large graphs.
+
+### Our Solution
+
+We solve this by using a **Hybrid Architecture**:
+
+- **Canvas** handles the "Heavy Lifting": Rendering thousands of connection lines (Edges), background grids, and high-frequency "Marching Ants" flow animations.
+- **HTML Overlays** handle the "User Interface": Nodes, sliders, buttons, and custom widgets are rendered as DOM elements, allowing full CSS power and seamless interaction.
+
+### 의도 및 목적
+
+기존의 노드 에디터들은 보통 두 가지 선택지 중 하나로 구현됩니다:
+
+- **순수 Canvas**: 수많은 노드와 엣지를 처리하는 성능은 좋지만, 스타일링이 어렵고 복잡한 인터랙티브 위젯(입력창, 드롭다운 등)을 구현하기 매우 까다롭습니다.
+- **순수 DOM**: 스타일링과 인터랙션은 쉽지만, 복잡한 엣지 애니메이션이나 대규모 그래프에서는 성능이 급격히 저하됩니다.
+
+**HTML-overlay-Node**는 **하이브리드 아키텍처**를 통해 이 문제를 해결합니다:
+
+- **Canvas**는 "무거운 작업"을 담당합니다: 수천 개의 연결선(Edges), 배경 그리드, 고주파 'Marching Ants' 흐름 애니메이션을 렌더링합니다.
+- **HTML 오버레이**는 "사용자 인터페이스"를 담당합니다: 노드 본체, 슬라이더, 버튼 등은 DOM 요소로 렌더링되어 CSS의 강력한 기능과 매끄러운 인터랙션을 그대로 활용할 수 있습니다.
+
+---
+
+## 🚀 Core Advantages (주요 장점)
+
+- **Performance & Scalability**: Smooth 60fps even with complex logic flows and large-scale graphs.
+- **Infinite Customizability**: Build nodes using standard HTML/CSS. No need to learn complex Canvas drawing APIs for UI.
+- **Engineering Aesthetics**: Meticulously crafted dark theme with 2px precision rounding and category-based color coding.
+- **Logic-Ready**: Built-in support for both Execution Flow (events) and Data Flow (values).
+
+### 주요 장점
+
+- **성능과 확장성**: 복잡한 로직 흐름과 대규모 그래프에서도 부드러운 60fps 성능을 유지합니다.
+- **무한한 커스터마이징**: 표준 HTML/CSS를 사용하여 노드를 구축할 수 있습니다. UI를 위해 복잡한 Canvas 드로잉 API를 배울 필요가 없습니다.
+- **엔지니어링 미학**: 2px의 정밀한 라운딩과 카테고리별 컬러 코딩이 적용된 정교한 다크 테마를 제공합니다.
+- **로직 최적화**: 실행 흐름(이벤트)과 데이터 흐름(값)을 모두 지원하도록 설계되었습니다.
 
 ---
 
@@ -51,7 +98,7 @@ registry.register("math/Multiply", {
   color: "#f43f5e", // 카테고리 컬러
   inputs: [
     { name: "a", portType: "data" },
-    { name: "b", portType: "data" }
+    { name: "b", portType: "data" },
   ],
   outputs: [{ name: "result", portType: "data" }],
   // 실행 로직 정의
@@ -59,7 +106,7 @@ registry.register("math/Multiply", {
     const a = getInput("a") ?? 1;
     const b = getInput("b") ?? 1;
     setOutput("result", a * b);
-  }
+  },
 });
 ```
 
@@ -79,7 +126,7 @@ registry.register("ui/Slider", {
       node.state.value = e.target.value;
       // 상태 변경 시 그래프 갱신 알림
     };
-  }
+  },
 });
 ```
 
@@ -89,27 +136,27 @@ registry.register("ui/Slider", {
 
 `index.css`에 정의된 CSS 변수를 덮어쓰는 것만으로도 전체 에디터의 룩앤필을 브랜드에 맞게 조정할 수 있습니다.
 
-| 변수명 | 설명 | 기본값 |
-| :--- | :--- | :--- |
-| `--hon-bg` | 캔버스 배경색 | `#0d0d0f` |
-| `--hon-node-bg` | 노드 내부 배경색 | `#16161a` |
+| 변수명              | 설명             | 기본값                   |
+| :------------------ | :--------------- | :----------------------- |
+| `--hon-bg`          | 캔버스 배경색    | `#0d0d0f`                |
+| `--hon-node-bg`     | 노드 내부 배경색 | `#16161a`                |
 | `--hon-node-border` | 노드 테두리 색상 | `rgba(255,255,255,0.08)` |
-| `--hon-accent` | 강조 포인트 컬러 | `#4f46e5` |
-| `--hon-text` | 기본 텍스트 색상 | `#e2e8f0` |
-| `--hon-grid` | 그리드 점 색상 | `rgba(255,255,255,0.03)` |
+| `--hon-accent`      | 강조 포인트 컬러 | `#4f46e5`                |
+| `--hon-text`        | 기본 텍스트 색상 | `#e2e8f0`                |
+| `--hon-grid`        | 그리드 점 색상   | `rgba(255,255,255,0.03)` |
 
 ---
 
 ## ⌨️ 생산성 단축키
 
-| 기능 | 단축키 |
-| :--- | :--- |
-| **노드 삭제** | `Delete` |
-| **수평/수직 정렬** | `A` / `Shift + A` |
-| **그룹 생성** | `Ctrl + G` |
-| **그리드 스냅 토글**| `G` |
+| 기능                 | 단축키                  |
+| :------------------- | :---------------------- |
+| **노드 삭제**        | `Delete`                |
+| **수평/수직 정렬**   | `A` / `Shift + A`       |
+| **그룹 생성**        | `Ctrl + G`              |
+| **그리드 스냅 토글** | `G`                     |
 | **실행 취소/재실행** | `Ctrl + Z` / `Ctrl + Y` |
-| **미니맵 토글** | `M` |
+| **미니맵 토글**      | `M`                     |
 
 ---
 
