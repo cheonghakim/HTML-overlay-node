@@ -89,7 +89,9 @@ export function createGraphEditor(
 
   // Register callback to sync HTML overlay transform when renderer zoom/pan changes
   renderer.setTransformChangeCallback(() => {
-    htmlOverlay.syncTransform();
+    // Calling controller.render() will internally call htmlOverlay.draw() 
+    // and redraw all canvas layers, ensuring perfect synchronization.
+    controller.render();
   });
 
   // Edge Canvas (above HTML overlay, for edge animations)
@@ -165,6 +167,7 @@ export function createGraphEditor(
       graph,
       hooks,
       registry,
+      controller,
       render: () => controller.render(),
     });
 

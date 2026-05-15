@@ -1,48 +1,77 @@
 :root {
-  /* Colors */
-  --color-primary: #6366f1;
-  --color-primary-hover: #818cf8;
-  --color-primary-active: #5568d0;
-  --color-bg-deep: rgba(10, 10, 18, 0.96);
-  --color-bg-surface: rgba(255, 255, 255, 0.05);
-  --color-bg-toolbar: rgba(12, 12, 20, 0.92);
-  --color-border: rgba(255, 255, 255, 0.08);
+  /* ── Enterprise Color System ─────────────────────────────────── */
+  --color-primary: #5e6ad2;
+  --color-primary-hover: #6e7ae0;
+  --color-primary-active: #4d5ab8;
+  --color-primary-subtle: rgba(94, 106, 210, 0.1);
+  --color-primary-glow: rgba(94, 106, 210, 0.2);
+
+  /* Surfaces — cool dark with slight blue tint */
+  --color-bg-canvas: #07070f;
+  --color-bg-deep: rgba(11, 11, 20, 0.97);
+  --color-bg-surface: rgba(255, 255, 255, 0.04);
+  --color-bg-elevated: rgba(255, 255, 255, 0.06);
+  --color-bg-toolbar: rgba(13, 13, 21, 0.94);
+
+  /* Borders */
+  --color-border: rgba(255, 255, 255, 0.07);
   --color-border-light: rgba(255, 255, 255, 0.04);
-  --color-border-focus: rgba(99, 102, 241, 0.4);
-  --color-text-main: #f5f5f5;
-  --color-text-dim: #a0a0c0;
-  --color-text-muted: #8080a0;
-  --color-text-disabled: #4a4a68;
+  --color-border-focus: rgba(94, 106, 210, 0.5);
+  --color-border-subtle: rgba(255, 255, 255, 0.05);
 
-  /* Layout */
-  --radius-xs: 1px;
-  --radius-sm: 2px;
-  --radius-md: 2px;
-  --radius-lg: 4px;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  /* Text hierarchy */
+  --color-text-main: #eeeef6;
+  --color-text-secondary: #c2c2d8;
+  --color-text-dim: #9494b4;
+  --color-text-muted: #64647e;
+  --color-text-disabled: #3a3a54;
 
-  /* Node Categories - Premium Palette */
-  --color-node-default: #3b3b4f;
-  --color-node-logic: #7c3aed;
-  --color-node-action: #059669;
-  --color-node-data: #2563eb;
-  --color-node-info: #4f46e5;
-  --color-node-event: #d97706;
-  --color-node-math: #db2777;
+  /* Node category accent colors — desaturated for enterprise */
+  --color-node-default: #252535;
+  --color-node-logic: #3d1d66;
+  --color-node-action: #0e3828;
+  --color-node-data: #0e2550;
+  --color-node-info: #1a1a44;
+  --color-node-event: #3d2608;
+  --color-node-math: #3d0d2d;
 
-  --font-main: "Inter", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", monospace;
+  /* Status */
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
+
+  /* Typography */
+  --font-main: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code", monospace;
+
+  /* Geometry */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 10px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.7);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.85);
 }
 
-html,
-body {
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
   height: 100%;
   margin: 0;
   overflow: hidden;
   font-family: var(--font-main);
-  background-color: #0c0c14;
+  background-color: #07070f;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #wrap {
@@ -72,163 +101,196 @@ body {
 #toolbar {
   z-index: 1000;
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: 14px;
+  left: 14px;
   display: flex;
-  gap: 4px;
+  gap: 2px;
   align-items: center;
-  padding: 6px 10px;
+  padding: 5px 8px;
   background: var(--color-bg-toolbar);
-  backdrop-filter: blur(8px);
-  border-radius: var(--radius-md);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-sm), var(--shadow-md);
+  box-shadow: var(--shadow-sm), 0 0 0 0.5px rgba(255,255,255,0.04) inset;
   font-size: 12px;
   color: var(--color-text-muted);
 }
 
 #toolbar button {
-  padding: 4px 10px;
+  padding: 4px 9px;
   background: transparent;
   color: var(--color-text-muted);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: 500;
+  font-family: var(--font-main);
   cursor: pointer;
-  letter-spacing: 0.4px;
-  transition: all 0.12s ease;
+  letter-spacing: 0.3px;
+  transition: color 0.1s, background 0.1s, border-color 0.1s;
   margin: 0;
   white-space: nowrap;
+  line-height: 1.4;
 }
 
 #toolbar button:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #b0b0d0;
-  border-color: rgba(255, 255, 255, 0.08);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
 }
 
 #toolbar button:active {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-dim);
 }
 
 .toolbar-sep {
   width: 1px;
-  height: 16px;
-  background: rgba(255, 255, 255, 0.08);
-  margin: 0 6px;
+  height: 14px;
+  background: var(--color-border);
+  margin: 0 4px;
   flex-shrink: 0;
+  opacity: 0.6;
 }
 
 #toolbar label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   cursor: pointer;
-  color: #606080;
+  color: var(--color-text-muted);
   font-size: 11px;
+  padding: 0 2px;
 }
 
 #toolbar select {
-  padding: 3px 24px 3px 8px;
-  background: var(--color-bg-surface);
+  padding: 3px 22px 3px 7px;
+  background: transparent;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--color-text-dim);
   font-size: 11px;
+  font-family: var(--font-main);
   cursor: pointer;
   outline: none;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s, color 0.15s;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23606080' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364647e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 8px center;
+  background-position: right 6px center;
+}
+
+#toolbar select option {
+  background: #1a1a28;
+  color: var(--color-text-secondary);
 }
 
 #toolbar select:hover {
   border-color: var(--color-border-focus);
-  color: var(--color-text-main);
-  background-color: var(--color-bg-toolbar);
+  color: var(--color-text-secondary);
 }
 
 #toolbar select:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 2px var(--color-primary-glow);
 }
 
+/* Snap / Status indicator */
 .indicator {
-  padding: 3px 8px;
+  padding: 3px 7px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
   font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.4px;
-  color: #4a4a68;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+  color: var(--color-text-disabled);
   text-transform: uppercase;
-  transition: all 0.15s ease;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  user-select: none;
 }
 
 .indicator.active {
-  color: #5568d0;
-  border-color: rgba(85, 104, 208, 0.3);
-  background: rgba(85, 104, 208, 0.06);
+  color: var(--color-primary-hover);
+  border-color: rgba(94, 106, 210, 0.35);
+  background: var(--color-primary-subtle);
 }
 
-/* ── Mode Toggle ────────────────────────────────────────────── */
+/* ── Mode Toggle ─────────────────────────────────────────────── */
 .mode-toggle {
   display: flex;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.25);
   padding: 2px;
   border-radius: var(--radius-sm);
-  gap: 2px;
+  gap: 1px;
 }
 
 .mode-toggle button {
-  padding: 3px 12px !important;
+  padding: 3px 11px !important;
   font-size: 10px !important;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   border: 1px solid transparent !important;
-  opacity: 0.4;
+  opacity: 0.45;
+  font-weight: 600 !important;
 }
 
 .mode-toggle button:hover {
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.05) !important;
+  opacity: 0.85;
+  background: rgba(255, 255, 255, 0.04) !important;
 }
 
 .mode-toggle button.active {
   opacity: 1;
-  font-weight: 700;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+  border-radius: 2px !important;
 }
 
-/* Run Mode Active State (Emerald) */
+/* Run mode — emerald */
 .mode-toggle button[data-mode="run"].active {
-  color: #10b981 !important;
-  background: rgba(16, 185, 129, 0.1) !important;
-  border-color: rgba(16, 185, 129, 0.3) !important;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+  color: #22c55e !important;
+  background: rgba(34, 197, 94, 0.08) !important;
+  border-color: rgba(34, 197, 94, 0.25) !important;
 }
 
-/* Step Mode Active State (Violet) */
+/* Step mode — violet */
 .mode-toggle button[data-mode="step"].active {
-  color: #a78bfa !important;
-  background: rgba(139, 92, 246, 0.1) !important;
-  border-color: rgba(139, 92, 246, 0.3) !important;
-  box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
+  color: #8b8ef8 !important;
+  background: rgba(139, 142, 248, 0.08) !important;
+  border-color: rgba(139, 142, 248, 0.25) !important;
+}
+
+/* ── Zoom Controls ───────────────────────────────────────────── */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.zoom-controls button {
+  width: 22px;
+  height: 22px;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  border-radius: var(--radius-xs) !important;
+  line-height: 1 !important;
 }
 
 /* ── Help Overlay ─────────────────────────────────────────────── */
 #helpOverlay {
   position: absolute;
-  bottom: 16px;
-  left: 16px;
-  width: 300px;
+  bottom: 14px;
+  left: 14px;
+  width: 292px;
   max-height: 480px;
   background: var(--color-bg-deep);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: 14px;
@@ -239,33 +301,22 @@ body {
   display: none;
   z-index: 1000;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
 
-#helpOverlay::-webkit-scrollbar {
-  width: 5px;
-}
-
-#helpOverlay::-webkit-scrollbar-track {
-  background: transparent;
-}
-
+#helpOverlay::-webkit-scrollbar { width: 4px; }
+#helpOverlay::-webkit-scrollbar-track { background: transparent; }
 #helpOverlay::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
 }
+#helpOverlay::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
 
-#helpOverlay::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-#helpOverlay.visible {
-  display: block;
-}
+#helpOverlay.visible { display: block; }
 
 #helpOverlay h3 {
   margin: 0 0 10px 0;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--color-text-dim);
   border-bottom: 1px solid var(--color-border);
@@ -273,34 +324,32 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.7px;
   text-transform: uppercase;
 }
 
 #helpOverlay .close-btn {
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
-  color: #4a4a68;
-  transition: color 0.15s;
+  color: var(--color-text-disabled);
+  transition: color 0.12s;
   background: none;
   border: none;
   padding: 0;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-#helpOverlay .close-btn:hover {
-  color: #8888a8;
-}
+#helpOverlay .close-btn:hover { color: var(--color-text-dim); }
 
 #helpOverlay h4 {
-  margin: 12px 0 6px 0;
+  margin: 12px 0 5px 0;
   font-size: 10px;
-  color: #4a4a68;
+  color: var(--color-text-disabled);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.8px;
@@ -310,127 +359,148 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 6px;
-  margin: 2px 0;
+  padding: 3px 4px;
+  margin: 1px 0;
   border-radius: 3px;
 }
 
-.shortcut-item:hover {
-  background: rgba(255, 255, 255, 0.03);
-}
+.shortcut-item:hover { background: rgba(255, 255, 255, 0.025); }
 
 .shortcut-item span:first-child {
   font-size: 11px;
-  color: #68688a;
+  color: var(--color-text-muted);
 }
 
 .shortcut-key {
   font-family: var(--font-mono);
   font-weight: 600;
   padding: 2px 5px;
-  background: var(--color-bg-surface);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: 10px;
-  color: var(--color-primary);
+  border-radius: var(--radius-xs);
+  font-size: 9.5px;
+  color: var(--color-primary-hover);
   letter-spacing: 0.2px;
 }
 
 #helpToggle {
   position: absolute;
-  bottom: 16px;
-  left: 16px;
-  width: 28px;
-  height: 28px;
+  bottom: 14px;
+  left: 14px;
+  width: 26px;
+  height: 26px;
   background: var(--color-bg-toolbar);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  font-family: var(--font-mono);
   color: var(--color-text-disabled);
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.12s ease;
+  box-shadow: var(--shadow-xs);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
   z-index: 1000;
+  user-select: none;
 }
 
 #helpToggle:hover {
-  background: var(--color-bg-deep);
   color: var(--color-text-dim);
-  border-color: var(--color-border-focus);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 #helpToggle.active {
   color: var(--color-primary);
-  border-color: var(--color-primary-active);
-  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(94, 106, 210, 0.4);
+  background: var(--color-primary-subtle);
 }
 
-/* ── Premium Components ───────────────────────────────────────── */
+/* ── Node Overlay (HTML nodes) ────────────────────────────────── */
+.node-overlay {
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}
+
+.node-body {
+  padding-top: 10px;
+}
+
+.node-header-accent {
+  display: none;
+}
+
+/* ── Premium Form Components ──────────────────────────────────── */
 .premium-input {
   width: 100%;
-  padding: 6px 10px;
-  background: rgba(0, 0, 0, 0.4) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding: 6px 9px;
+  background: rgba(0, 0, 0, 0.45) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
   border-radius: var(--radius-sm) !important;
   color: var(--color-text-main) !important;
   font-size: 11px !important;
   font-family: var(--font-mono) !important;
   outline: none !important;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s !important;
   box-sizing: border-box !important;
   pointer-events: auto !important;
+  line-height: 1.4 !important;
+}
+
+.premium-input::placeholder {
+  color: var(--color-text-disabled) !important;
 }
 
 .premium-input:focus {
   border-color: var(--color-primary) !important;
   background: rgba(0, 0, 0, 0.6) !important;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+  box-shadow: 0 0 0 2px var(--color-primary-glow) !important;
 }
 
 .premium-button {
-  padding: 4px 12px;
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  padding: 5px 12px;
+  background: var(--color-primary-subtle);
+  border: 1px solid rgba(94, 106, 210, 0.28);
   border-radius: var(--radius-sm);
   color: var(--color-primary-hover);
   font-size: 11px;
   font-weight: 600;
+  font-family: var(--font-main);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
   pointer-events: auto;
+  white-space: nowrap;
 }
 
 .premium-button:hover {
   background: var(--color-primary);
-  color: white;
+  color: #fff;
   border-color: var(--color-primary);
+}
+
+.premium-button:active {
+  background: var(--color-primary-active);
 }
 
 .premium-label {
   color: var(--color-text-muted);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  font-family: var(--font-main);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
   display: block;
 }
 
-.node-overlay {
-  /* Let the canvas renderer handle the box rendering */
-  border-radius: var(--radius-md);
-  pointer-events: none;
+/* ── Scrollbars (global) ─────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
 }
-
-.node-body {
-  padding-top: 10px; /* Offset to clear port labels */
-}
-
-.node-header-accent {
-  display: none; /* Redundant now */
-}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }

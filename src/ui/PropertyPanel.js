@@ -2,11 +2,12 @@
  * PropertyPanel - Node property editor panel
  */
 export class PropertyPanel {
-  constructor(container, { graph, hooks, registry, render }) {
+  constructor(container, { graph, hooks, registry, controller, render }) {
     this.container = container;
     this.graph = graph;
     this.hooks = hooks;
     this.registry = registry;
+    this.controller = controller;
     this.render = render;
     this._def = null; // current node type definition
 
@@ -347,44 +348,43 @@ export class PropertyPanel {
 
   _handleFieldChange(field, value) {
     const node = this.currentNode;
-    if (!node) return;
+    if (!node || !this.controller) return;
+
+    const nodeId = node.id;
 
     switch (field) {
       case 'title':
-        node.title = value;
+        this.controller.updateNodeProperty(nodeId, 'title', value);
         break;
       case 'x':
-        node.pos.x = parseFloat(value);
-        this.graph.updateWorldTransforms();
+        this.controller.updateNodeProperty(nodeId, 'x', parseFloat(value));
         break;
       case 'y':
-        node.pos.y = parseFloat(value);
-        this.graph.updateWorldTransforms();
+        this.controller.updateNodeProperty(nodeId, 'y', parseFloat(value));
         break;
       case 'width':
-        node.size.width = parseFloat(value);
+        this.controller.updateNodeProperty(nodeId, 'width', parseFloat(value));
         break;
       case 'height':
-        node.size.height = parseFloat(value);
+        this.controller.updateNodeProperty(nodeId, 'height', parseFloat(value));
         break;
       default:
         if (field.startsWith('state.')) {
           const key = field.substring(6);
           if (node.state && key in node.state) {
+            const newState = { ...node.state };
             const orig = node.state[key];
             if (typeof orig === 'boolean') {
-              node.state[key] = value === 'true';
+              newState[key] = value === 'true';
             } else if (typeof orig === 'number') {
-              node.state[key] = parseFloat(value);
+              newState[key] = parseFloat(value);
             } else {
-              node.state[key] = value;
+              newState[key] = value;
             }
+            this.controller.updateNodeState(nodeId, newState);
           }
         }
     }
-
-    this.hooks?.emit('node:updated', node);
-    this.render?.();
   }
 
   /** Lightweight update of position fields only (no full re-render) */

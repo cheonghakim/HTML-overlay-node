@@ -1,3 +1,5 @@
+// src/core/commands.js
+
 // Find an edge id by its endpoints (fallback for undo)
 function findEdgeId(graph, a, b, c, d) {
   for (const [id, e] of graph.edges) {
@@ -23,6 +25,22 @@ export function MoveNodeCmd(node, fromPos, toPos) {
   };
 }
 
+export function MoveNodesCmd(nodesInfo) {
+  // nodesInfo: Array<{ node, fromPos, toPos }>
+  return {
+    do() {
+      for (const { node, toPos } of nodesInfo) {
+        node.pos = { ...toPos };
+      }
+    },
+    undo() {
+      for (const { node, fromPos } of nodesInfo) {
+        node.pos = { ...fromPos };
+      }
+    },
+  };
+}
+
 export function AddEdgeCmd(graph, fromNode, fromPort, toNode, toPort) {
   let addedId = null;
   return {
@@ -42,13 +60,13 @@ export function RemoveEdgeCmd(graph, edgeId) {
   const e = graph.edges.get(edgeId);
   if (!e) return null;
   // capture for undo
-  const { fromNode, fromPort, toNode, toPort } = e;
+  const snapshot = { ...e, route: e.route ? { ...e.route } : null };
   return {
     do() {
       graph.edges.delete(edgeId);
     },
     undo() {
-      graph.addEdge(fromNode, fromPort, toNode, toPort);
+      graph.edges.set(edgeId, snapshot);
     },
   };
 }
@@ -121,5 +139,76 @@ export function ChangeGroupColorCmd(node, fromColor, toColor) {
     undo() {
       node.state.color = fromColor;
     },
+  };
+}
+
+export function ReparentCmd(graph, node, fromParent, toParent) {
+  return {
+    do() {
+      graph.reparent(node, toParent);
+    },
+    undo() {
+      graph.reparent(node, fromParent);
+    },
+  };
+}
+
+export function ChangeEdgeRouteCmd(graph, edgeId, fromRoute, toRoute) {
+  return {
+    do() {
+      const edge = graph.edges.get(edgeId);
+      if (edge) edge.route = JSON.parse(JSON.stringify(toRoute));
+    },
+    undo() {
+      const edge = graph.edges.get(edgeId);
+      if (edge) edge.route = JSON.parse(JSON.stringify(fromRoute));
+    },
+  };
+}
+
+export function AddNodeCmd(graph, type, data) {
+  return {
+    addedNode: null,
+    do() {
+      this.addedNode = graph.addNode(type, data);
+      if (data.state) this.addedNode.state = JSON.parse(JSON.stringify(data.state));
+    },
+    undo() {
+      if (this.addedNode) graph.removeNode(this.addedNode.id);
+    },
+  };
+}
+
+export function AddGroupCmd(groupManager, args) {
+  return {
+    addedGroup: null,
+    do() {
+      this.addedGroup = groupManager.addGroup(args);
+    },
+    undo() {
+      if (this.addedGroup) groupManager.removeGroup(this.addedGroup.id);
+    },
+  };
+}
+
+export function RemoveGroupCmd(groupManager, groupNode) {
+  // To undo a group removal, we need to recreate it with the same members
+  const args = {
+    title: groupNode.title,
+    x: groupNode.pos.x,
+    y: groupNode.pos.y,
+    width: groupNode.size.width,
+    height: groupNode.size.height,
+    color: groupNode.state.color,
+    members: [...groupNode.children].map(n => n.id)
+  };
+  
+  return {
+    do() {
+      groupManager.removeGroup(groupNode.id);
+    },
+    undo() {
+      groupManager.addGroup(args);
+    }
   };
 }

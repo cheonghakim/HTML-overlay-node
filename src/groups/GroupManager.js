@@ -33,6 +33,7 @@ export class GroupManager {
       height,
     });
     groupNode.state.color = color;
+    this.graph.updateWorldTransforms();
 
     // Reparent members with validation
     for (const memberId of members) {
@@ -47,6 +48,8 @@ export class GroupManager {
         console.warn(`Member node ${memberId} not found, skipping`);
       }
     }
+
+    this.graph.updateWorldTransforms();
 
     this._groups.push(groupNode);
     this.hooks?.emit("group:change");
@@ -72,6 +75,9 @@ export class GroupManager {
     }
 
     this.graph.removeNode(id);
+    // Clean up internal tracking array
+    const idx = this._groups.indexOf(groupNode);
+    if (idx !== -1) this._groups.splice(idx, 1);
     this.hooks?.emit("group:change");
   }
 

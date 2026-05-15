@@ -7,7 +7,7 @@ export function registerCoreNodes(registry, hooks) {
     // Note Node
     registry.register("core/Note", {
         title: "Note",
-        color: "#10b981", // info (emerald)
+        color: "#06b6d4", // vivid cyan
         size: { w: 180 },
         inputs: [{ name: "in", datatype: "any" }],
         outputs: [{ name: "out", datatype: "any" }],
@@ -27,7 +27,7 @@ export function registerCoreNodes(registry, hooks) {
     // HTML Note Node
     registry.register("core/HtmlNote", {
         title: "HTML Note",
-        color: "#3b82f6", // data (blue)
+        color: "#2563eb", // vivid blue
         size: { w: 220 },
         inputs: [{ name: "in", datatype: "any" }],
         outputs: [{ name: "out", datatype: "any" }],
@@ -77,7 +77,7 @@ export function registerCoreNodes(registry, hooks) {
     // Todo List Node (HTML Overlay)
     registry.register("core/TodoNode", {
         title: "Task list",
-        color: "#10b981", // info (emerald)
+        color: "#059669", // vivid emerald
         size: { w: 240, h: 300 },
         inputs: [{ name: "in", datatype: "any" }],
         outputs: [{ name: "out", datatype: "any" }],
@@ -198,15 +198,15 @@ export function registerCoreNodes(registry, hooks) {
     // Group Node
     registry.register("core/Group", {
         title: "Group",
-        color: "#475569", // group (slate)
+        color: "#64748b", // slate (groups stay neutral)
         size: { w: 240, h: 160 },
         onDraw(node, { ctx, theme, renderer }) {
             const { x, y, w, h } = node.computed;
-            const headerH = 24;
+            const headerH = theme.headerHeight ?? 28;
             const color = node.state.color || node.color || "#39424e";
-            const bgAlpha = 0.4;
+            const bgAlpha = 0.12;
             const textColor = theme.text || "#e9e9ef";
-            const r = 4; // Groups can be slightly softer but still sharp
+            const r = theme.groupRadius ?? 18;
 
             const rgba = (hex, a) => {
                 const c = hex.replace("#", "");
@@ -237,18 +237,49 @@ export function registerCoreNodes(registry, hooks) {
                 ctx.closePath();
             };
 
+            ctx.save();
+            ctx.shadowColor = rgba(color, 0.16);
+            ctx.shadowBlur = 18;
             ctx.fillStyle = rgba(color, bgAlpha);
             roundRect(ctx, x, y, w, h, r);
             ctx.fill();
+            ctx.restore();
 
-            ctx.fillStyle = rgba(color, 0.2);
+            const bodyGradient = ctx.createLinearGradient(x, y, x, y + h);
+            bodyGradient.addColorStop(0, "rgba(255,255,255,0.035)");
+            bodyGradient.addColorStop(1, "rgba(255,255,255,0.01)");
+            ctx.fillStyle = bodyGradient;
+            roundRect(ctx, x, y, w, h, r);
+            ctx.fill();
+
+            ctx.strokeStyle = rgba(color, 0.34);
+            ctx.lineWidth = 1;
+            roundRect(ctx, x, y, w, h, r);
+            ctx.stroke();
+
+            const headerGradient = ctx.createLinearGradient(x, y, x + w, y + headerH);
+            headerGradient.addColorStop(0, rgba(color, 0.28));
+            headerGradient.addColorStop(1, rgba(color, 0.14));
+            ctx.fillStyle = headerGradient;
             ctx.beginPath();
             ctx.roundRect(x, y, w, headerH, [r, r, 0, 0]);
             ctx.fill();
 
+            ctx.strokeStyle = rgba(color, 0.4);
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, y + headerH);
+            ctx.lineTo(x + w, y + headerH);
+            ctx.stroke();
+
+            ctx.fillStyle = rgba(color, 0.9);
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, 2, [r, r, 0, 0]);
+            ctx.fill();
+
             // Use screen-coordinate text rendering for consistent scale
             if (renderer && renderer._drawScreenText) {
-                renderer._drawScreenText(node.title, x + 12, y + 13, {
+                renderer._drawScreenText(node.title, x + 14, y + headerH / 2, {
                     fontPx: 13,
                     color: textColor,
                     baseline: "middle",
@@ -259,7 +290,7 @@ export function registerCoreNodes(registry, hooks) {
                 ctx.fillStyle = textColor;
                 ctx.font = "600 13px system-ui";
                 ctx.textBaseline = "top";
-                ctx.fillText(node.title, x + 12, y + 6);
+                ctx.fillText(node.title, x + 14, y + 8);
             }
         },
     });

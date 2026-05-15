@@ -1,5 +1,5 @@
 import { portRect } from "../render/hitTest.js";
-import { AddEdgeCmd, RemoveEdgeCmd, RemoveNodeCmd, ResizeNodeCmd } from "../core/commands.js";
+import { AddEdgeCmd, MoveNodesCmd, RemoveEdgeCmd, RemoveNodeCmd, ResizeNodeCmd, ReparentCmd, CompoundCmd, ChangeEdgeRouteCmd, AddNodeCmd, AddGroupCmd, RemoveGroupCmd } from "../core/commands.js";
 import { CommandStack } from "../core/CommandStack.js";
 
 export class Controller {
@@ -16,9 +16,11 @@ export class Controller {
     this.portRenderer = portRenderer; // Separate renderer for ports above HTML
 
     this.stack = new CommandStack();
+    this._initCommands();
     this.selection = new Set();
     this.dragging = null; // { nodeId, dx, dy }
     this.connecting = null; // { fromNode, fromPort, x(screen), y(screen) }
+    this.edgeHandleDrag = null; // { edgeId, handle }
     this.panning = null; // { x(screen), y(screen) }
     this.resizing = null;
     this.gDragging = null;
@@ -29,6 +31,9 @@ export class Controller {
     this.activeEdges = new Set();
     this.activeEdgeTimes = new Map(); // edge.id → activation timestamp
     this.activeNodes = new Set();     // node IDs currently executing
+
+    // Clipboard for copy/paste
+    this._clipboard = null;
 
     // Feature flags
     this.snapToGrid = true; // Snap nodes to grid (toggle with G key)
@@ -70,6 +75,125 @@ export class Controller {
     window.removeEventListener("keydown", this._onKeyPressEvt);
   }
 
+  /**
+   * HIGH-LEVEL API for Users/Developers
+   * These methods handle Undo/Redo automatically.
+   */
+
+  addNode(type, options = {}) {
+    const nodeData = {
+      type,
+      title: options.title || type.split("/").pop(),
+      x: options.x || 0,
+      y: options.y || 0,
+      width: options.width,
+      height: options.height,
+      state: options.state || {},
+    };
+
+    let addedNode = null;
+    const cmd = {
+      do: () => {
+        addedNode = this.graph.addNode(nodeData.type, nodeData);
+        if (nodeData.state) addedNode.state = JSON.parse(JSON.stringify(nodeData.state));
+        this.render();
+      },
+      undo: () => {
+        if (addedNode) this.graph.removeNode(addedNode.id);
+        this.render();
+      }
+    };
+    this.stack.exec(cmd);
+    return addedNode;
+  }
+
+  removeNode(nodeId) {
+    const node = this.graph.getNodeById(nodeId);
+    if (node) {
+      this.stack.exec(RemoveNodeCmd(this.graph, node));
+      this.render();
+    }
+  }
+
+  addEdge(fromNode, fromPort, toNode, toPort) {
+    this.stack.exec(AddEdgeCmd(this.graph, fromNode, fromPort, toNode, toPort));
+    this.render();
+  }
+
+  /**
+   * Update node state with automatic undo support
+   */
+  updateNodeState(nodeId, newState) {
+    const node = this.graph.getNodeById(nodeId);
+    if (!node) return;
+
+    const prevState = JSON.parse(JSON.stringify(node.state));
+    const nextState = JSON.parse(JSON.stringify(newState));
+
+    this.stack.exec({
+      do: () => {
+        node.state = JSON.parse(JSON.stringify(nextState));
+        this.hooks.emit("node:updated", node);
+        this.render();
+      },
+      undo: () => {
+        node.state = JSON.parse(JSON.stringify(prevState));
+        this.hooks.emit("node:updated", node);
+        this.render();
+      }
+    });
+  }
+
+  /**
+   * Update a general node property (title, width, height, etc.) with undo support
+   */
+  updateNodeProperty(nodeId, prop, newValue) {
+    const node = this.graph.getNodeById(nodeId);
+    if (!node) return;
+
+    let prevValue;
+    if (prop === 'x' || prop === 'y') prevValue = node.pos[prop];
+    else if (prop === 'width' || prop === 'height') prevValue = node.size[prop];
+    else prevValue = node[prop];
+
+    if (prevValue === newValue) return;
+
+    this.stack.exec({
+      do: () => {
+        if (prop === 'x' || prop === 'y') node.pos[prop] = newValue;
+        else if (prop === 'width' || prop === 'height') node.size[prop] = newValue;
+        else node[prop] = newValue;
+        
+        if (prop === 'x' || prop === 'y') this.graph.updateWorldTransforms();
+        this.hooks.emit("node:updated", node);
+        this.render();
+      },
+      undo: () => {
+        if (prop === 'x' || prop === 'y') node.pos[prop] = prevValue;
+        else if (prop === 'width' || prop === 'height') node.size[prop] = prevValue;
+        else node[prop] = prevValue;
+
+        if (prop === 'x' || prop === 'y') this.graph.updateWorldTransforms();
+        this.hooks.emit("node:updated", node);
+        this.render();
+      }
+    });
+  }
+
+  undo() {
+    this.stack.undo();
+    this.render();
+  }
+
+  redo() {
+    this.stack.redo();
+    this.render();
+  }
+
+  _initCommands() {
+    // Reserved for future internal command registration
+  }
+
   _bindEvents() {
     const c = this.renderer.canvas;
     c.addEventListener("mousedown", this._onDownEvt);
@@ -89,7 +213,7 @@ export class Controller {
     // Toggle snap-to-grid with G key
     if (e.key.toLowerCase() === "g" && !e.ctrlKey && !e.metaKey) {
       this.snapToGrid = !this.snapToGrid;
-      this.render(); // Update UI
+      this.render();
       return;
     }
 
@@ -97,6 +221,39 @@ export class Controller {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
       e.preventDefault();
       this._createGroupFromSelection();
+      return;
+    }
+
+    // Select All: Ctrl/Cmd + A
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      this.selection.clear();
+      for (const node of this.graph.nodes.values()) {
+        this.selection.add(node.id);
+      }
+      this.render();
+      return;
+    }
+
+    // Copy: Ctrl/Cmd + C
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+      e.preventDefault();
+      this._copySelection();
+      return;
+    }
+
+    // Paste: Ctrl/Cmd + V
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+      e.preventDefault();
+      this._pasteClipboard();
+      return;
+    }
+
+    // Duplicate: Ctrl/Cmd + D
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+      e.preventDefault();
+      this._copySelection();
+      this._pasteClipboard();
       return;
     }
 
@@ -117,8 +274,24 @@ export class Controller {
       return;
     }
 
-    // Align nodes: A (horizontal), Shift+A (vertical)
-    if (e.key.toLowerCase() === "a" && this.selection.size > 1) {
+    // Zoom In: Ctrl/Cmd + Plus
+    if ((e.ctrlKey || e.metaKey) && (e.key === "+" || e.key === "=")) {
+      e.preventDefault();
+      this.renderer.zoomAt(1.1, this.renderer.canvas.width / 2, this.renderer.canvas.height / 2);
+      this.render();
+      return;
+    }
+
+    // Zoom Out: Ctrl/Cmd + Minus
+    if ((e.ctrlKey || e.metaKey) && (e.key === "-")) {
+      e.preventDefault();
+      this.renderer.zoomAt(0.9, this.renderer.canvas.width / 2, this.renderer.canvas.height / 2);
+      this.render();
+      return;
+    }
+
+    // Align nodes: A (horizontal), Shift+A (vertical) — only when no modifier
+    if (e.key.toLowerCase() === "a" && !e.ctrlKey && !e.metaKey && this.selection.size > 1) {
       e.preventDefault();
       if (e.shiftKey) {
         this._alignNodesVertical();
@@ -128,15 +301,42 @@ export class Controller {
       return;
     }
 
-    // remove the selected nodes
-    if (e.key === "Delete") {
-      [...this.selection].forEach((node) => {
-        const nodeObj = this.graph.getNodeById(node);
-        this.stack.exec(RemoveNodeCmd(this.graph, nodeObj));
-        this.graph.removeNode(node);
-      });
+    // Fit to view: F
+    if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
+      this.fitToView();
+      return;
+    }
 
+    // Escape: Deselect all on Esc
+    if (e.key === "Escape") {
+      this.selection.clear();
       this.render();
+      return;
+    }
+
+    // Delete selected nodes
+    if (e.key === "Delete" || e.key === "Backspace") {
+      if (e.key === "Backspace" && document.activeElement !== document.body) return;
+      const toDelete = [...this.selection];
+      if (toDelete.length === 0) return;
+
+      const deleteCmds = [];
+      for (const nodeId of toDelete) {
+        const nodeObj = this.graph.getNodeById(nodeId);
+        if (nodeObj) {
+          if (nodeObj.type === "core/Group") {
+            deleteCmds.push(RemoveGroupCmd(this.graph.groupManager, nodeObj));
+          } else {
+            deleteCmds.push(RemoveNodeCmd(this.graph, nodeObj));
+          }
+        }
+      }
+
+      if (deleteCmds.length > 0) {
+        this.stack.exec(CompoundCmd(deleteCmds));
+        this.selection.clear();
+        this.render();
+      }
     }
   }
 
@@ -179,13 +379,6 @@ export class Controller {
     return null;
   }
 
-  /**
-   * Find child node at world coordinates (recursive helper for _findNodeAtWorld)
-   * @param {Node} parentNode - Parent node (group)
-   * @param {number} x - World x coordinate
-   * @param {number} y - World y coordinate
-   * @returns {Node|null} - Child node at position, or null
-   */
   _findChildNodeAtWorld(parentNode, x, y) {
     // Get all children of this parent
     const children = [];
@@ -235,6 +428,40 @@ export class Controller {
         return { id: eid, edge: e };
       }
     }
+    return null;
+  }
+
+  _distanceToSegment(px, py, ax, ay, bx, by) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    if (dx === 0 && dy === 0) return Math.hypot(px - ax, py - ay);
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+    const cx = ax + dx * t;
+    const cy = ay + dy * t;
+    return Math.hypot(px - cx, py - cy);
+  }
+
+  _findEdgeHandleAtWorld(x, y) {
+    if (this.renderer.edgeStyle !== "orthogonal") return null;
+    const threshold = 8 / this.renderer.scale;
+
+    for (const [edgeId, edge] of Array.from(this.graph.edges.entries()).reverse()) {
+      const pts = this.renderer._getOrthogonalPointsFromEdge(this.graph, edge);
+      if (pts.length < 6) continue;
+
+      const handles = [
+        { handle: "splitX1", cursor: "col-resize", a: pts[1], b: pts[2] },
+        { handle: "splitY", cursor: "row-resize", a: pts[2], b: pts[3] },
+        { handle: "splitX2", cursor: "col-resize", a: pts[3], b: pts[4] },
+      ];
+
+      for (const candidate of handles) {
+        if (this._distanceToSegment(x, y, candidate.a.x, candidate.a.y, candidate.b.x, candidate.b.y) <= threshold) {
+          return { edgeId, handle: candidate.handle, cursor: candidate.cursor };
+        }
+      }
+    }
+
     return null;
   }
 
@@ -337,6 +564,18 @@ export class Controller {
       return;
     }
 
+    const edgeHandle = this._findEdgeHandleAtWorld(w.x, w.y);
+    if (e.button === 0 && edgeHandle) {
+      const edge = this.graph.edges.get(edgeHandle.edgeId);
+      this.edgeHandleDrag = {
+        ...edgeHandle,
+        initialRoute: edge ? JSON.parse(JSON.stringify(edge.route || {})) : {}
+      };
+      this._setCursor(edgeHandle.cursor);
+      this.render();
+      return;
+    }
+
     // 3. Node Hit Test (Selection & Drag)
     if (e.button === 0 && node) {
       if (!e.shiftKey) this.selection.clear();
@@ -355,6 +594,7 @@ export class Controller {
       for (const selectedId of this.selection) {
         const selectedNode = this.graph.nodes.get(selectedId);
         if (selectedNode) {
+          if (this._selectionHasAncestor(selectedNode)) continue;
           this.dragging.selectedNodes.push({
             node: selectedNode,
             startWorldX: selectedNode.computed.x,
@@ -441,12 +681,36 @@ export class Controller {
       return;
     }
 
+    if (this.edgeHandleDrag) {
+      const edge = this.graph.edges.get(this.edgeHandleDrag.edgeId);
+      if (edge) {
+        edge.route = edge.route || {};
+        let targetX = this.snapToGrid ? this._snapToGrid(w.x) : w.x;
+        let targetY = this.snapToGrid ? this._snapToGrid(w.y) : w.y;
+
+        if (this.edgeHandleDrag.handle === "splitY") {
+          edge.route.splitY = targetY;
+          this._setCursor("row-resize");
+        } else if (this.edgeHandleDrag.handle === "splitX1") {
+          edge.route.splitX1 = targetX;
+          this._setCursor("col-resize");
+        } else if (this.edgeHandleDrag.handle === "splitX2") {
+          edge.route.splitX2 = targetX;
+          this._setCursor("col-resize");
+        }
+        this.render();
+      }
+      return;
+    }
+
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
 
       // Calculate delta for main node
+      const primaryInfo = this.dragging.selectedNodes.find((sn) => sn.node.id === n.id);
       let targetWx = w.x - this.dragging.offsetX;
-      let targetWy = this.isShift ? w.y - 0 : w.y - this.dragging.offsetY;
+      // Shift: lock to horizontal movement only
+      let targetWy = this.isShift ? primaryInfo.startWorldY : w.y - this.dragging.offsetY;
 
       // Apply snap-to-grid if enabled
       if (this.snapToGrid) {
@@ -455,10 +719,8 @@ export class Controller {
       }
 
       // Calculate delta from original position
-      const deltaX =
-        targetWx - this.dragging.selectedNodes.find((sn) => sn.node.id === n.id).startWorldX;
-      const deltaY =
-        targetWy - this.dragging.selectedNodes.find((sn) => sn.node.id === n.id).startWorldY;
+      const deltaX = targetWx - primaryInfo.startWorldX;
+      const deltaY = targetWy - primaryInfo.startWorldY;
 
       // Update world transforms
       this.graph.updateWorldTransforms();
@@ -513,18 +775,35 @@ export class Controller {
     if (this.connecting) {
       this.connecting.x = s.x;
       this.connecting.y = s.y;
+
+      // Port Snapping logic: find if we are near an input port
+      const snappedPort = this._findPortAtWorld(w.x, w.y);
+      if (snappedPort && snappedPort.dir === "in") {
+        const inR = portRect(snappedPort.node, snappedPort.port, snappedPort.idx, "in");
+        const screenSnapped = this.renderer.worldToScreen(inR.x + inR.w / 2, inR.y + inR.h / 2);
+        // We update the visual position of the connecting line, but keep the mouse pos for the tool
+        this.connecting.snappedX = screenSnapped.x;
+        this.connecting.snappedY = screenSnapped.y;
+      } else {
+        this.connecting.snappedX = null;
+        this.connecting.snappedY = null;
+      }
+
       this.render();
     }
 
     // Cursor update
     const port = this._findPortAtWorld(w.x, w.y);
     const node = this._findNodeAtWorld(w.x, w.y);
+    const edgeHandle = this._findEdgeHandleAtWorld(w.x, w.y);
 
     if (node && this._hitResizeHandle(node, w.x, w.y)) {
       this._setCursor("se-resize");
     } else if (port) {
       // Show pointer cursor over ports (for connecting/disconnecting)
       this._setCursor("pointer");
+    } else if (edgeHandle) {
+      this._setCursor(edgeHandle.cursor);
     } else {
       this._setCursor("default");
     }
@@ -542,8 +821,23 @@ export class Controller {
       return;
     }
 
+    if (this.edgeHandleDrag) {
+      const edge = this.graph.edges.get(this.edgeHandleDrag.edgeId);
+      if (edge) {
+        this.stack.exec(ChangeEdgeRouteCmd(
+          this.graph,
+          this.edgeHandleDrag.edgeId,
+          this.edgeHandleDrag.initialRoute,
+          edge.route
+        ));
+      }
+      this.edgeHandleDrag = null;
+      this._setCursor("default");
+      this.render();
+      return;
+    }
+
     if (this.connecting) {
-      // ... (existing connection logic)
       const from = this.connecting;
       const portIn = this._findPortAtWorld(w.x, w.y);
       if (portIn && portIn.dir === "in") {
@@ -569,32 +863,42 @@ export class Controller {
     if (this.dragging) {
       const n = this.graph.nodes.get(this.dragging.nodeId);
 
+      // 1. Record movement in history
+      const movedNodesInfo = [];
+      for (const info of this.dragging.selectedNodes) {
+        const fromPos = { x: info.startLocalX, y: info.startLocalY };
+        const toPos = { x: info.node.pos.x, y: info.node.pos.y };
+        if (fromPos.x !== toPos.x || fromPos.y !== toPos.y) {
+          movedNodesInfo.push({ node: info.node, fromPos, toPos });
+        }
+      }
+      if (movedNodesInfo.length > 0) {
+        this.stack.exec(MoveNodesCmd(movedNodesInfo));
+      }
+
+      // 2. Post-drag logic (reparenting, etc.)
       // If we're dragging a GROUP with Alt, only move the group (keep children in place)
       if (n.type === "core/Group" && this.isAlt && this.dragging.childrenWorldPos) {
-        // Restore children to their original world positions
         for (const childInfo of this.dragging.childrenWorldPos) {
           const child = childInfo.node;
-          // Convert world position back to local position relative to new group position
           this.graph.updateWorldTransforms();
           const newGroupX = n.computed.x;
           const newGroupY = n.computed.y;
-
           child.pos.x = childInfo.worldX - newGroupX;
           child.pos.y = childInfo.worldY - newGroupY;
         }
       } else if (n.type === "core/Group" && !this.isAlt) {
-        // Normal group drag - auto-parent nodes
         this._autoParentNodesInGroup(n);
       } else if (n.type !== "core/Group") {
-        // Normal node: Reparenting Logic
-        // Check if dropped onto a group
-        const potentialParent = this._findPotentialParent(w.x, w.y, n);
+        this.graph.updateWorldTransforms();
+        const nodeCenterX = n.computed.x + n.computed.w / 2;
+        const nodeCenterY = n.computed.y + n.computed.h / 2;
+        const potentialParent = this._findPotentialParent(nodeCenterX, nodeCenterY, n);
 
         if (potentialParent && potentialParent !== n.parent) {
-          this.graph.reparent(n, potentialParent);
+          this.stack.exec(ReparentCmd(this.graph, n, n.parent, potentialParent));
         } else if (!potentialParent && n.parent) {
-          // Dropped on empty space -> move to root
-          this.graph.reparent(n, null);
+          this.stack.exec(ReparentCmd(this.graph, n, n.parent, null));
         }
       }
 
@@ -603,7 +907,6 @@ export class Controller {
     }
 
     if (this.boxSelecting) {
-      // Select all nodes within the box
       const { startX, startY, currentX, currentY } = this.boxSelecting;
       const minX = Math.min(startX, currentX);
       const maxX = Math.max(startX, currentX);
@@ -612,166 +915,216 @@ export class Controller {
 
       for (const node of this.graph.nodes.values()) {
         const { x, y, w, h } = node.computed;
-        // Check if node intersects with selection box
         if (x + w >= minX && x <= maxX && y + h >= minY && y <= maxY) {
           this.selection.add(node.id);
         }
       }
-
       this.boxSelecting = null;
       this.render();
     }
   }
 
-  /**
-   * Automatically parent nodes that are within the group's bounds
-   * @param {Node} groupNode - The group node
-   */
   _autoParentNodesInGroup(groupNode) {
     const { x: gx, y: gy, w: gw, h: gh } = groupNode.computed;
-
-    // Find all nodes that are within the group bounds
     for (const node of this.graph.nodes.values()) {
-      // Skip the group itself
       if (node === groupNode) continue;
-
-      // Skip if it's already a child of this group
       if (node.parent === groupNode) continue;
-
-      // Skip if it's another group (prevent nested groups for now)
       if (node.type === "core/Group") continue;
+      if (node.parent && node.parent !== groupNode) continue;
 
-      // Check if node is within group bounds
       const { x: nx, y: ny, w: nw, h: nh } = node.computed;
       const nodeCenterX = nx + nw / 2;
       const nodeCenterY = ny + nh / 2;
 
-      // Use center point to determine if node is inside group
-      if (
-        nodeCenterX >= gx &&
-        nodeCenterX <= gx + gw &&
-        nodeCenterY >= gy &&
-        nodeCenterY <= gy + gh
-      ) {
-        // Parent this node to the group
+      if (nodeCenterX >= gx && nodeCenterX <= gx + gw && nodeCenterY >= gy && nodeCenterY <= gy + gh) {
         this.graph.reparent(node, groupNode);
       }
     }
   }
 
-  _findPotentialParent(x, y, excludeNode) {
-    // Find top-most group under x,y that is not excludeNode or its descendants
-    const list = [...this.graph.nodes.values()].reverse();
-    for (const n of list) {
-      if (n.type !== "core/Group") continue;
-      if (n === excludeNode) continue;
-      // Check if n is descendant of excludeNode
-      let p = n.parent;
-      let isDescendant = false;
-      while (p) {
-        if (p === excludeNode) {
-          isDescendant = true;
-          break;
-        }
-        p = p.parent;
-      }
-      if (isDescendant) continue;
-
-      const { x: nx, y: ny, w, h } = n.computed;
-      if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
-        return n;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Snap a coordinate to the grid
-   * @param {number} value - The value to snap
-   * @returns {number} - Snapped value
-   */
-  _snapToGrid(value) {
-    return Math.round(value / this.gridSize) * this.gridSize;
-  }
-
-  /**
-   * Create a group from currently selected nodes
-   */
-  _createGroupFromSelection() {
-    if (this.selection.size === 0) {
-      console.warn("No nodes selected to group");
-      return;
-    }
-
-    // Get selected nodes
-    const selectedNodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
-
-    // Calculate bounding box
-    let minX = Infinity,
-      minY = Infinity,
-      maxX = -Infinity,
-      maxY = -Infinity;
-    for (const node of selectedNodes) {
-      const { x, y, w, h } = node.computed;
+  fitToView() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let hasNodes = false;
+    this.graph.updateWorldTransforms();
+    for (const n of this.graph.nodes.values()) {
+      const { x, y, w, h } = n.computed;
       minX = Math.min(minX, x);
       minY = Math.min(minY, y);
       maxX = Math.max(maxX, x + w);
       maxY = Math.max(maxY, y + h);
+      hasNodes = true;
     }
+    if (!hasNodes) return;
 
-    const margin = 20;
-    const groupX = minX - margin;
-    const groupY = minY - margin;
-    const groupWidth = maxX - minX + margin * 2;
-    const groupHeight = maxY - minY + margin * 2;
+    const canvas = this.renderer.canvas;
+    const padding = 80;
+    const contentW = maxX - minX + padding * 2;
+    const contentH = maxY - minY + padding * 2;
+    const scale = Math.min(canvas.width / contentW, canvas.height / contentH, 2);
+    const offsetX = (canvas.width - (maxX - minX) * scale) / 2 - minX * scale;
+    const offsetY = (canvas.height - (maxY - minY) * scale) / 2 - minY * scale;
 
-    // Create group via GroupManager
-    if (this.graph.groupManager) {
-      this.graph.groupManager.addGroup({
-        title: "Group",
-        x: groupX,
-        y: groupY,
-        width: groupWidth,
-        height: groupHeight,
-        members: Array.from(this.selection),
-      });
-      this.selection.clear();
-      this.render();
-    }
-  }
-
-  /**
-   * Align selected nodes horizontally (same Y position)
-   */
-  _alignNodesHorizontal() {
-    if (this.selection.size < 2) return;
-
-    const nodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
-    const avgY = nodes.reduce((sum, n) => sum + n.computed.y, 0) / nodes.length;
-
-    for (const node of nodes) {
-      const parentY = node.parent ? node.parent.computed.y : 0;
-      node.pos.y = avgY - parentY;
-    }
-
-    this.graph.updateWorldTransforms();
+    this.renderer.setTransform({ scale, offsetX, offsetY });
     this.render();
   }
 
   /**
-   * Align selected nodes vertically (same X position)
+   * Enterprise Feature: Auto Layout (Simple Grid)
    */
+  autoLayout() {
+    const nodes = [...this.graph.nodes.values()].filter(n => n.type !== "core/Group");
+    if (nodes.length === 0) return;
+
+    const cols = Math.ceil(Math.sqrt(nodes.length));
+    const spacingX = 250;
+    const spacingY = 150;
+
+    const movedNodes = [];
+    nodes.forEach((node, i) => {
+      const fromPos = { ...node.pos };
+      const toPos = {
+        x: (i % cols) * spacingX,
+        y: Math.floor(i / cols) * spacingY
+      };
+      movedNodes.push({ node, fromPos, toPos });
+    });
+
+    this.stack.exec(MoveNodesCmd(movedNodes));
+    this.graph.updateWorldTransforms();
+    this.fitToView();
+    this.render();
+  }
+
+  _copySelection() {
+    if (this.selection.size === 0) return;
+    this.graph.updateWorldTransforms();
+    this._clipboard = [];
+    for (const id of this.selection) {
+      const node = this.graph.nodes.get(id);
+      if (!node) continue;
+      this._clipboard.push({
+        type: node.type,
+        title: node.title,
+        x: node.computed.x,
+        y: node.computed.y,
+        w: node.size.width,
+        h: node.size.height,
+        state: JSON.parse(JSON.stringify(node.state)),
+      });
+    }
+  }
+
+  _pasteClipboard() {
+    if (!this._clipboard || this._clipboard.length === 0) return;
+    const offset = 24;
+    this.selection.clear();
+    
+    const cmds = [];
+    for (const data of this._clipboard) {
+      const pasteData = {
+        title: data.title,
+        x: data.x + offset,
+        y: data.y + offset,
+        width: data.w,
+        height: data.h,
+        state: JSON.parse(JSON.stringify(data.state))
+      };
+      const cmd = AddNodeCmd(this.graph, data.type, pasteData);
+      cmds.push(cmd);
+    }
+
+    if (cmds.length > 0) {
+      const compound = CompoundCmd(cmds);
+      this.stack.exec(compound);
+      
+      // Select the newly added nodes
+      for (const cmd of cmds) {
+        if (cmd.addedNode) this.selection.add(cmd.addedNode.id);
+      }
+    }
+
+    this._clipboard = this._clipboard.map((n) => ({ ...n, x: n.x + offset, y: n.y + offset }));
+    this.graph.updateWorldTransforms();
+    this.render();
+  }
+
+  _findPotentialParent(x, y, excludeNode) {
+    const list = [...this.graph.nodes.values()].reverse();
+    for (const n of list) {
+      if (n.type !== "core/Group" || n === excludeNode) continue;
+      let p = n.parent;
+      let isDescendant = false;
+      while (p) {
+        if (p === excludeNode) { isDescendant = true; break; }
+        p = p.parent;
+      }
+      if (isDescendant) continue;
+      const { x: nx, y: ny, w, h } = n.computed;
+      if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) return n;
+    }
+    return null;
+  }
+
+  _selectionHasAncestor(node) {
+    let parent = node.parent;
+    while (parent) {
+      if (this.selection.has(parent.id)) return true;
+      parent = parent.parent;
+    }
+    return false;
+  }
+
+  _snapToGrid(value) {
+    return Math.round(value / this.gridSize) * this.gridSize;
+  }
+
+  _createGroupFromSelection() {
+    if (this.selection.size === 0) return;
+    const selectedNodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const node of selectedNodes) {
+      const { x, y, w, h } = node.computed;
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
+    }
+    const margin = 20;
+    if (this.graph.groupManager) {
+      const args = {
+        title: "Group",
+        x: minX - margin, y: minY - margin,
+        width: maxX - minX + margin * 2, height: maxY - minY + margin * 2,
+        members: Array.from(this.selection),
+      };
+      
+      const cmd = AddGroupCmd(this.graph.groupManager, args);
+      this.stack.exec(cmd);
+
+      this.selection.clear();
+      if (cmd.addedGroup) this.selection.add(cmd.addedGroup.id);
+      this.render();
+    }
+  }
+
+  _alignNodesHorizontal() {
+    if (this.selection.size < 2) return;
+    const nodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
+    const avgY = nodes.reduce((sum, n) => sum + n.computed.y, 0) / nodes.length;
+    for (const node of nodes) {
+      const parentY = node.parent ? node.parent.computed.y : 0;
+      node.pos.y = avgY - parentY;
+    }
+    this.graph.updateWorldTransforms();
+    this.render();
+  }
+
   _alignNodesVertical() {
     if (this.selection.size < 2) return;
-
     const nodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
     const avgX = nodes.reduce((sum, n) => sum + n.computed.x, 0) / nodes.length;
-
     for (const node of nodes) {
       const parentX = node.parent ? node.parent.computed.x : 0;
       node.pos.x = avgX - parentX;
     }
-
     this.graph.updateWorldTransforms();
     this.render();
   }
@@ -781,29 +1134,23 @@ export class Controller {
     const runner = this.graph.runner;
     const isStepMode = !!runner && runner.executionMode === "step";
 
-    // 1. Draw background (grid, canvas-only nodes) on main canvas
     this.renderer.draw(this.graph, {
       selection: this.selection,
-      tempEdge: null, // Don't draw temp edge on background
+      tempEdge: null,
       boxSelecting: this.boxSelecting,
       activeEdges: this.activeEdges || new Set(),
       activeEdgeTimes: this.activeEdgeTimes,
-      drawEdges: !this.edgeRenderer, // Only draw edges here if no separate edge renderer
+      drawEdges: !this.edgeRenderer,
       time,
       loopActiveEdges: isStepMode,
     });
 
-    // 2. HTML Overlay layer (HTML nodes at z-index 10)
     this.htmlOverlay?.draw(this.graph, this.selection);
 
-    // 3. Draw edges and animations on edge canvas (above HTML overlay at z-index 15)
     if (this.edgeRenderer) {
       const edgeCtx = this.edgeRenderer.ctx;
       edgeCtx.clearRect(0, 0, this.edgeRenderer.canvas.width, this.edgeRenderer.canvas.height);
-
-      // Edges use shared transform (via property getters)
       this.edgeRenderer._applyTransform();
-
       this.edgeRenderer.drawEdgesOnly(this.graph, {
         activeEdges: this.activeEdges,
         activeEdgeTimes: this.activeEdgeTimes,
@@ -813,67 +1160,38 @@ export class Controller {
         tempEdge: tEdge,
         loopActiveEdges: isStepMode,
       });
-
       this.edgeRenderer._resetTransform();
     }
 
-    // 4. Draw box selection rectangle on top of edges
     if (this.boxSelecting) {
       const { startX, startY, currentX, currentY } = this.boxSelecting;
       const minX = Math.min(startX, currentX);
       const minY = Math.min(startY, currentY);
       const width = Math.abs(currentX - startX);
       const height = Math.abs(currentY - startY);
-
       const screenStart = this.renderer.worldToScreen(minX, minY);
       const screenEnd = this.renderer.worldToScreen(minX + width, minY + height);
-
       const ctx = this.edgeRenderer ? this.edgeRenderer.ctx : this.renderer.ctx;
       ctx.save();
-      if (this.edgeRenderer) {
-        this.edgeRenderer._resetTransform();
-      } else {
-        this.renderer._resetTransform();
-      }
-
-      // Draw selection box
+      if (this.edgeRenderer) this.edgeRenderer._resetTransform();
+      else this.renderer._resetTransform();
       ctx.strokeStyle = "#6cf";
       ctx.fillStyle = "rgba(102, 204, 255, 0.1)";
       ctx.lineWidth = 2;
-      ctx.strokeRect(
-        screenStart.x,
-        screenStart.y,
-        screenEnd.x - screenStart.x,
-        screenEnd.y - screenStart.y
-      );
-      ctx.fillRect(
-        screenStart.x,
-        screenStart.y,
-        screenEnd.x - screenStart.x,
-        screenEnd.y - screenStart.y
-      );
-
+      ctx.strokeRect(screenStart.x, screenStart.y, screenEnd.x - screenStart.x, screenEnd.y - screenStart.y);
+      ctx.fillRect(screenStart.x, screenStart.y, screenEnd.x - screenStart.x, screenEnd.y - screenStart.y);
       ctx.restore();
     }
 
-    // 5. Draw ports on port canvas (above edges at z-index 20)
     if (this.portRenderer) {
       const portCtx = this.portRenderer.ctx;
       portCtx.clearRect(0, 0, this.portRenderer.canvas.width, this.portRenderer.canvas.height);
-
-      // Sync transform
       this.portRenderer.scale = this.renderer.scale;
       this.portRenderer.offsetX = this.renderer.offsetX;
       this.portRenderer.offsetY = this.renderer.offsetY;
-
       this.portRenderer._applyTransform();
-
-      // Draw ports for HTML overlay nodes only
-      // Draw ports for ALL nodes to ensure they are above edges
       for (const n of this.graph.nodes.values()) {
-        if (n.type !== "core/Group") {
-          this.portRenderer._drawPorts(n);
-        }
+        if (n.type !== "core/Group") this.portRenderer._drawPorts(n);
       }
       this.portRenderer._resetTransform();
     }
@@ -881,20 +1199,20 @@ export class Controller {
 
   renderTempEdge() {
     if (!this.connecting) return null;
-    const a = this._portAnchorScreen(this.connecting.fromNode, this.connecting.fromPort); // {x,y}
+    const a = this._portAnchorScreen(this.connecting.fromNode, this.connecting.fromPort);
     return {
       x1: a.x,
       y1: a.y,
-      x2: this.connecting.x,
-      y2: this.connecting.y,
+      x2: this.connecting.snappedX ?? this.connecting.x,
+      y2: this.connecting.snappedY ?? this.connecting.y,
     };
   }
 
   _portAnchorScreen(nodeId, portId) {
     const n = this.graph.nodes.get(nodeId);
     const iOut = n.outputs.findIndex((p) => p.id === portId);
-    const r = portRect(n, null, iOut, "out"); // world rect
-    return this.renderer.worldToScreen(r.x + r.w / 2, r.y + r.h / 2); // -> screen point (CENTER)
+    const r = portRect(n, null, iOut, "out");
+    return this.renderer.worldToScreen(r.x + r.w / 2, r.y + r.h / 2);
   }
 }
 

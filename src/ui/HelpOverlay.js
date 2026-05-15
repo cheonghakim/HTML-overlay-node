@@ -25,14 +25,19 @@ export class HelpOverlay {
           { label: "Select node", key: "Click" },
           { label: "Multi-select", key: "Shift+Click" },
           { label: "Box select", key: "Ctrl+Drag" },
+          { label: "Select all", key: "Ctrl+A" },
+          { label: "Deselect", key: "Esc" },
         ],
       },
       {
         group: "Edit",
         items: [
+          { label: "Copy", key: "Ctrl+C" },
+          { label: "Paste", key: "Ctrl+V" },
+          { label: "Duplicate", key: "Ctrl+D" },
           { label: "Delete", key: "Del" },
           { label: "Undo", key: "Ctrl+Z" },
-          { label: "Redo", key: "Ctrl+Y" },
+          { label: "Redo", key: "Ctrl+Shift+Z" },
         ],
       },
       {
@@ -46,7 +51,8 @@ export class HelpOverlay {
       {
         group: "View",
         items: [
-          { label: "Toggle snap", key: "G" },
+          { label: "Fit to view", key: "F" },
+          { label: "Toggle snap-to-grid", key: "G" },
           { label: "Pan", key: "Mid+Drag" },
           { label: "Zoom", key: "Scroll" },
           { label: "Context menu", key: "RClick" },

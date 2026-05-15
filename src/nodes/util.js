@@ -4,7 +4,7 @@ const STEP_DURATION = 620;
 export function registerUtilNodes(registry) {
   registry.register("util/Trigger", {
     title: "Trigger",
-    color: "#f7cb4d", // event (amber)
+    color: "#f59e0b", // vivid amber
     size: { w: 140, h: 100 },
     outputs: [{ name: "exec", portType: "exec" }],
     html: {

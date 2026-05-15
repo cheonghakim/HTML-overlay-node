@@ -177,21 +177,16 @@ export class Graph {
   }
   // data helpers
   setOutput(nodeId, portId, value) {
-    console.log(`[Graph.setOutput] nodeId: ${nodeId}, portId: ${portId}, value:`, value);
     const key = `${nodeId}:${portId}`;
     this._nextBuf().set(key, value);
   }
   getInput(nodeId, portId) {
-    // Find incoming edge to this port
     for (const edge of this.edges.values()) {
       if (edge.toNode === nodeId && edge.toPort === portId) {
         const key = `${edge.fromNode}:${edge.fromPort}`;
-        const value = this._curBuf().get(key);
-        console.log(`[Graph.getInput] nodeId: ${nodeId}, portId: ${portId}, reading from ${edge.fromNode}:${edge.fromPort}, value:`, value);
-        return value;
+        return this._curBuf().get(key);
       }
     }
-    console.log(`[Graph.getInput] nodeId: ${nodeId}, portId: ${portId}, no edge found, returning undefined`);
     return undefined;
   }
   toJSON() {

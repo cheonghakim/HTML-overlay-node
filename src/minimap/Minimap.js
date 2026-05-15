@@ -18,14 +18,55 @@ export class Minimap {
         this.canvas.style.right = "20px";
         this.canvas.style.border = "2px solid #444";
         this.canvas.style.borderRadius = "8px";
-        this.canvas.style.background = "rgba(20, 20, 23, 0.9)";
-        this.canvas.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.5)";
-        this.canvas.style.pointerEvents = "none"; // Don't block clicks
+        this.canvas.style.background = "rgba(10, 14, 18, 0.92)";
+        this.canvas.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.6)";
+        this.canvas.style.pointerEvents = "auto";
+        this.canvas.style.cursor = "crosshair";
 
         this.ctx = this.canvas.getContext("2d");
 
         // Add to container
         container.appendChild(this.canvas);
+
+        this._setupInteractions();
+    }
+
+    _setupInteractions() {
+        let isDragging = false;
+
+        const handleInteraction = (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            // Map minimap coordinates back to world coordinates
+            const worldX = (mx - this.lastOffsetX) / this.lastScale + this.lastMinX;
+            const worldY = (my - this.lastOffsetY) / this.lastScale + this.lastMinY;
+
+            // Center the renderer at this world position
+            const vw = this.renderer.canvas.width / this.renderer.scale;
+            const vh = this.renderer.canvas.height / this.renderer.scale;
+
+            this.renderer.setTransform({
+                offsetX: -worldX * this.renderer.scale + this.renderer.canvas.width / 2,
+                offsetY: -worldY * this.renderer.scale + this.renderer.canvas.height / 2
+            });
+        };
+
+        this.canvas.addEventListener("mousedown", (e) => {
+            isDragging = true;
+            handleInteraction(e);
+            this.canvas.style.cursor = "grabbing";
+        });
+
+        window.addEventListener("mousemove", (e) => {
+            if (isDragging) handleInteraction(e);
+        });
+
+        window.addEventListener("mouseup", () => {
+            isDragging = false;
+            this.canvas.style.cursor = "crosshair";
+        });
     }
 
     /**
@@ -35,7 +76,7 @@ export class Minimap {
         const { graph, renderer, ctx, width: w, height: h } = this;
 
         // Clear
-        ctx.fillStyle = "#141417";
+        ctx.fillStyle = "#0a0e12";
         ctx.fillRect(0, 0, w, h);
 
         if (graph.nodes.size === 0) return;
@@ -72,8 +113,15 @@ export class Minimap {
         const offsetX = (w - graphWidth * scale) / 2;
         const offsetY = (h - graphHeight * scale) / 2;
 
-        // Draw edges first (so they appear behind nodes)
-        ctx.strokeStyle = "rgba(127, 140, 255, 0.5)"; // Semi-transparent edge color
+        // Store for interaction mapping
+        this.lastScale = scale;
+        this.lastOffsetX = offsetX;
+        this.lastOffsetY = offsetY;
+        this.lastMinX = minX;
+        this.lastMinY = minY;
+
+        // Draw edges
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
         ctx.lineWidth = 1;
         for (const edge of graph.edges.values()) {
             const fromNode = graph.nodes.get(edge.fromNode);
@@ -108,14 +156,17 @@ export class Minimap {
             const mh = nh * scale;
 
             if (node.type === "core/Group") {
-                ctx.fillStyle = "rgba(102, 204, 255, 0.2)";
-                ctx.strokeStyle = "#6cf";
+                ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
                 ctx.lineWidth = 1;
                 ctx.fillRect(mx, my, mw, mh);
                 ctx.strokeRect(mx, my, mw, mh);
             } else {
-                ctx.fillStyle = "#6cf";
-                ctx.fillRect(mx, my, Math.max(2, mw), Math.max(2, mh));
+                ctx.fillStyle = "#3B3B3B";
+                ctx.fillRect(mx, my, Math.max(3, mw), Math.max(3, mh));
+                
+                // Active node indicator in minimap if possible? 
+                // For now, let's just make them consistent.
             }
         }
 
@@ -130,9 +181,13 @@ export class Minimap {
         const vmw = vw * scale;
         const vmh = vh * scale;
 
-        ctx.strokeStyle = "#ff6b6b";
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#34d399";
+        ctx.lineWidth = 1.5;
         ctx.strokeRect(vmx, vmy, vmw, vmh);
+        
+        // Fill viewport area with very subtle tint
+        ctx.fillStyle = "rgba(52, 211, 153, 0.05)";
+        ctx.fillRect(vmx, vmy, vmw, vmh);
     }
 
     /**

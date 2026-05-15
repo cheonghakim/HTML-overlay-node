@@ -7,7 +7,7 @@ export function registerLogicNodes(registry) {
   // AND Node
   registry.register("logic/AND", {
     title: "AND",
-    color: "#a855f7", // logic (purple)
+    color: "#9333ea", // vivid purple
     size: { w: 120 },
     inputs: [
       { name: "exec", portType: "exec" },
@@ -21,17 +21,14 @@ export function registerLogicNodes(registry) {
     onExecute(node, { getInput, setOutput }) {
       const a = getInput("a") ?? false;
       const b = getInput("b") ?? false;
-      console.log("[AND] Inputs - a:", a, "b:", b);
-      const result = a && b;
-      console.log("[AND] Result:", result);
-      setOutput("result", result);
+      setOutput("result", a && b);
     },
   });
 
   // OR Node
   registry.register("logic/OR", {
     title: "OR",
-    color: "#a855f7", // logic (purple)
+    color: "#9333ea", // vivid purple
     size: { w: 120 },
     inputs: [
       { name: "a", datatype: "boolean" },
@@ -48,7 +45,7 @@ export function registerLogicNodes(registry) {
   // NOT Node
   registry.register("logic/NOT", {
     title: "NOT",
-    color: "#a855f7", // logic (purple)
+    color: "#9333ea", // vivid purple
     size: { w: 120 },
     inputs: [{ name: "in", datatype: "boolean" }],
     outputs: [{ name: "out", datatype: "boolean" }],

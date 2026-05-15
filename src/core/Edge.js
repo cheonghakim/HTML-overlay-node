@@ -15,7 +15,7 @@ export class Edge {
    * @param {string} options.toNode - Target node ID
    * @param {string} options.toPort - Target port ID
    */
-  constructor({ id, fromNode, fromPort, toNode, toPort }) {
+  constructor({ id, fromNode, fromPort, toNode, toPort, route = null }) {
     // Allow empty strings for port names (exec ports use empty names)
     // Only check for null/undefined
     if (fromNode == null || fromPort == null || toNode == null || toPort == null) {
@@ -26,5 +26,6 @@ export class Edge {
     this.fromPort = fromPort;
     this.toNode = toNode;
     this.toPort = toPort;
+    this.route = route ? { ...route } : null;
   }
 }

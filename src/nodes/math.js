@@ -3,11 +3,12 @@
  * Provides basic mathematical operation nodes
  */
 
+const MATH_COLOR = "#e11d48"; // vivid rose-red
+
 export function registerMathNodes(registry) {
-    // Add Node
     registry.register("math/Add", {
         title: "Add",
-        color: "#f43f5e", // math (rose)
+        color: MATH_COLOR,
         size: { w: 140 },
         inputs: [
             { name: "exec", portType: "exec" },
@@ -26,20 +27,17 @@ export function registerMathNodes(registry) {
             const a = getInput("a") ?? node.state.a ?? 0;
             const b = getInput("b") ?? node.state.b ?? 0;
             const result = a + b;
-            // Sync state so PropertyPanel shows actual values
             node.state.a = a;
             node.state.b = b;
             node.state.result = result;
-            console.log("[Add] a:", a, "b:", b, "result:", result);
             setOutput("result", result);
             setOutput("exec", true);
         },
     });
 
-    // Subtract Node
     registry.register("math/Subtract", {
         title: "Subtract",
-        color: "#f43f5e", // math (rose)
+        color: MATH_COLOR,
         size: { w: 140 },
         inputs: [
             { name: "a", datatype: "number" },
@@ -53,10 +51,9 @@ export function registerMathNodes(registry) {
         },
     });
 
-    // Multiply Node
     registry.register("math/Multiply", {
         title: "Multiply",
-        color: "#f43f5e", // math (rose)
+        color: MATH_COLOR,
         size: { w: 140 },
         inputs: [
             { name: "exec", portType: "exec" },
@@ -76,16 +73,14 @@ export function registerMathNodes(registry) {
                 node.state.b = b;
                 node.state.result = result;
             }
-            console.log("[Multiply] a:", a, "b:", b, "result:", result);
             setOutput("result", result);
             setOutput("exec", true);
         },
     });
 
-    // Divide Node
     registry.register("math/Divide", {
         title: "Divide",
-        color: "#f43f5e", // math (rose)
+        color: MATH_COLOR,
         size: { w: 140 },
         inputs: [
             { name: "a", datatype: "number" },
