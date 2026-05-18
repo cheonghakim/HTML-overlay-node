@@ -1,6 +1,6 @@
 {
   "name": "html-overlay-node",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "LiteGraph-style node editor with HTML overlay support",
   "main": "./dist/html-overlay-node.umd.js",
   "module": "./dist/html-overlay-node.es.js",
