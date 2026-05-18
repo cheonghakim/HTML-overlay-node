@@ -198,12 +198,10 @@
           const json = await res.json();
           editor.graph.fromJSON(json);
 
-          // Defer render to next frame so ResizeObserver has settled the canvas
-          // dimensions before we draw (canvas starts at 0×0 on first paint).
+          // Frame 1: open sub-panel so mainArea shrinks before fitToView.
+          // Frame 2: ResizeObserver has updated canvas dimensions → fitToView
+          // uses the correct (reduced) height and centers nodes in visible area.
           requestAnimationFrame(() => {
-            editor.controller?.fitToView({ padding: 140, maxScale: 0.95 });
-            editor.render();
-            updateSnapIndicator();
             try {
               const sgNode = editor.graph.nodes.get("n-sg");
               if (sgNode && editor.subNodePanel) {
@@ -212,6 +210,10 @@
             } catch (err) {
               console.warn("[loadExample] sub-panel open failed:", err);
             }
+            requestAnimationFrame(() => {
+              editor.controller?.fitToView({ padding: 80 });
+              updateSnapIndicator();
+            });
           });
         } catch (err) {
           if (err.message !== "no example.json") {
