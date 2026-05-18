@@ -205,13 +205,16 @@
             try {
               const sgNode = editor.graph.nodes.get("n-sg");
               if (sgNode && editor.subNodePanel) {
-                editor.subNodePanel.open(sgNode, sgNode.state.subGraphData, ["메인 그래프", sgNode.title]);
+                editor.subNodePanel.open(sgNode, sgNode.state.subGraphData, [
+                  "메인 그래프",
+                  sgNode.title,
+                ]);
               }
             } catch (err) {
               console.warn("[loadExample] sub-panel open failed:", err);
             }
             requestAnimationFrame(() => {
-              editor.controller?.fitToView({ padding: 80 });
+              editor.controller?.fitToView({ padding: 80, maxScale: 1.0 });
               updateSnapIndicator();
             });
           });
