@@ -177,6 +177,14 @@ describe("Graph", () => {
 
       expect(emittedEdge).toBe(edge);
     });
+
+    it("should throw error when source port doesn't exist", () => {
+      const node1 = graph.addNode("test/node");
+      const node2 = graph.addNode("test/node");
+      expect(() => {
+        graph.addEdge(node1.id, "missing-port", node2.id, node2.inputs[0].id);
+      }).toThrow(/source port "missing-port" not found/);
+    });
   });
 
   describe("clear", () => {
@@ -192,6 +200,20 @@ describe("Graph", () => {
 
       expect(graph.nodes.size).toBe(0);
       expect(graph.edges.size).toBe(0);
+    });
+
+    it("should reset buffered runtime values", () => {
+      const node1 = graph.addNode("test/node");
+      const node2 = graph.addNode("test/node");
+      graph.addEdge(node1.id, node1.outputs[0].id, node2.id, node2.inputs[0].id);
+      graph.setOutput(node1.id, node1.outputs[0].id, "persisted");
+      graph.swapBuffers();
+
+      graph.clear();
+
+      expect(graph.getInput(node2.id, node2.inputs[0].id)).toBeUndefined();
+      expect(graph._curBuf().size).toBe(0);
+      expect(graph._nextBuf().size).toBe(0);
     });
   });
 
@@ -232,6 +254,18 @@ describe("Graph", () => {
       expect(json.edges).toBeInstanceOf(Array);
     });
 
+    it("should return a detached serialization snapshot", () => {
+      const node = graph.addNode("test/node", { x: 100, y: 200 });
+      node.state.value = { nested: true };
+
+      const json = graph.toJSON();
+      json.nodes[0].state.value.nested = false;
+      json.nodes[0].inputs[0].name = "changed";
+
+      expect(graph.getNodeById(node.id).state.value.nested).toBe(true);
+      expect(graph.getNodeById(node.id).inputs[0].name).toBe("in");
+    });
+
     it("should deserialize graph from JSON", () => {
       const node1 = graph.addNode("test/node", { x: 100, y: 200 });
       const node2 = graph.addNode("test/node", { x: 300, y: 400 });
@@ -251,6 +285,66 @@ describe("Graph", () => {
       expect(graph.edges.size).toBe(1);
       expect(graph.getNodeById(node1.id)).toBeDefined();
       expect(graph.getNodeById(node2.id)).toBeDefined();
+    });
+
+    it("should preserve current graph when deserialization fails", () => {
+      const existing = graph.addNode("test/node", { x: 10, y: 20 });
+      const invalid = {
+        version: 2,
+        meta: { name: "Broken" },
+        nodes: [
+          {
+            id: "bad-node",
+            type: "test/node",
+            title: "Broken Node",
+            x: 0,
+            y: 0,
+            w: 100,
+            h: 50,
+            inputs: [{ id: "in-1", name: "in", datatype: "any", portType: "data", dir: "in" }],
+            outputs: [{ id: "out-1", name: "out", datatype: "any", portType: "data", dir: "out" }],
+            state: {},
+          },
+        ],
+        edges: [
+          {
+            id: "bad-edge",
+            fromNode: "bad-node",
+            fromPort: "missing-output",
+            toNode: "bad-node",
+            toPort: "in-1",
+          },
+        ],
+      };
+
+      expect(() => graph.fromJSON(invalid)).toThrow(/missing source port "missing-output"/);
+      expect(graph.nodes.size).toBe(1);
+      expect(graph.getNodeById(existing.id)).toBeDefined();
+      expect(graph.meta.name).toBe("Untitled");
+    });
+
+    it("should reject unknown node types during deserialization", () => {
+      const invalid = {
+        version: 2,
+        meta: {},
+        nodes: [
+          {
+            id: "node-1",
+            type: "unknown/type",
+            title: "Unknown",
+            x: 0,
+            y: 0,
+            w: 100,
+            h: 50,
+            inputs: [],
+            outputs: [],
+            state: {},
+          },
+        ],
+        edges: [],
+      };
+
+      expect(() => graph.fromJSON(invalid)).toThrow(/Unknown node type/);
     });
   });
 });

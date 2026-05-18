@@ -1,9 +1,10 @@
 import { portRect } from "./hitTest.js";
 
 export class CanvasRenderer {
-  static FONT_SIZE = 11;
+  static FONT_SIZE = 9;
   static SELECTED_NODE_COLOR = "#6cf";
   constructor(canvas, { theme = {}, registry, edgeStyle = "orthogonal" } = {}) {
+    this.iconManager = null;
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.registry = registry;
@@ -42,9 +43,9 @@ export class CanvasRenderer {
         accent: "#66d9ef",
         accentBright: "#a5f3fc",
         accentGlow: "rgba(102, 217, 239, 0.18)",
-        nodeRadius: 8,
+        nodeRadius: 2,
         groupRadius: 2,
-        headerHeight: 28,
+        headerHeight: 22,
         flowSpeed: 180,
         linkPulseSpacing: 28,
       },
@@ -128,7 +129,7 @@ export class CanvasRenderer {
     text,
     lx,
     ly,
-    { fontPx = 11, color = this.theme.text, align = "left", baseline = "alphabetic" } = {}
+    { fontPx = 11, color = this.theme.text, align = "left", baseline = "alphabetic", maxWidth = undefined } = {}
   ) {
     const { ctx } = this;
     const { x: sx, y: sy } = this.worldToScreen(lx, ly);
@@ -143,7 +144,11 @@ export class CanvasRenderer {
     ctx.fillStyle = color;
     ctx.textAlign = align;
     ctx.textBaseline = baseline;
-    ctx.fillText(text, px, py);
+    if (maxWidth !== undefined) {
+      ctx.fillText(text, px, py, maxWidth * this.scale);
+    } else {
+      ctx.fillText(text, px, py);
+    }
     ctx.restore();
   }
 
@@ -156,22 +161,23 @@ export class CanvasRenderer {
 
     const bgGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
     bgGradient.addColorStop(0, theme.bgAccentSoft || theme.bg);
-    bgGradient.addColorStop(0.55, theme.bg || theme.bgAccentSoft);
+    bgGradient.addColorStop(0.38, theme.bg || theme.bgAccentSoft);
     bgGradient.addColorStop(1, theme.bgAccent || theme.bg);
     ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // Symmetric vignette — centered so all edges darken equally
     const vignette = ctx.createRadialGradient(
       canvas.width * 0.5,
-      canvas.height * 0.45,
-      Math.min(canvas.width, canvas.height) * 0.08,
+      canvas.height * 0.5,
+      Math.min(canvas.width, canvas.height) * 0.05,
       canvas.width * 0.5,
-      canvas.height * 0.45,
-      Math.max(canvas.width, canvas.height) * 0.8
+      canvas.height * 0.5,
+      Math.max(canvas.width, canvas.height) * 0.82
     );
-    vignette.addColorStop(0, "rgba(255,255,255,0.015)");
-    vignette.addColorStop(0.5, "rgba(255,255,255,0)");
-    vignette.addColorStop(1, "rgba(0,0,0,0.34)");
+    vignette.addColorStop(0,    "rgba(255,255,255,0.012)");
+    vignette.addColorStop(0.5,  "rgba(255,255,255,0)");
+    vignette.addColorStop(1,    "rgba(0,0,0,0.13)");
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -349,9 +355,9 @@ export class CanvasRenderer {
       const b = this.screenToWorld(tempEdge.x2, tempEdge.y2);
 
       const prevDash = this.ctx.getLineDash();
-      this.ctx.setLineDash([5 / this.scale, 5 / this.scale]);
-      this.ctx.strokeStyle = this._rgba(this.theme.accentBright, 0.7);
-      this.ctx.lineWidth = 5.5 / this.scale;
+      this.ctx.setLineDash([5 / this.scale, 7 / this.scale]);
+      this.ctx.strokeStyle = tempEdge.incompatible ? 'rgba(239,68,68,0.85)' : this._rgba(this.theme.accentBright, 0.7);
+      this.ctx.lineWidth = 1.5 / this.scale;
 
       let ptsForArrow = null;
       if (this.edgeStyle === "line") {
@@ -376,7 +382,7 @@ export class CanvasRenderer {
         const p1 = ptsForArrow[ptsForArrow.length - 2];
         const p2 = ptsForArrow[ptsForArrow.length - 1];
         this.ctx.fillStyle = this.theme.accentBright;
-        this._drawArrowhead(p1.x, p1.y, p2.x, p2.y, 10);
+        this._drawArrowhead(p1.x, p1.y, p2.x, p2.y, 8);
       }
     }
 
@@ -437,6 +443,50 @@ export class CanvasRenderer {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
+  /** Returns icon name list for a node from its registry definition. */
+  _getNodeIconNames(node) {
+    const def = this.registry?.types?.get(node.type);
+    if (!def) return [];
+    if (Array.isArray(def.icons)) return def.icons;
+    if (typeof def.icon === 'string') return [def.icon];
+    return [];
+  }
+
+  /**
+   * Returns hit rect info for each icon on a node (world coordinates).
+   * @returns {{ cx: number, cy: number, r: number, name: string, index: number }[]}
+   */
+  getNodeIconRects(node) {
+    const iconNames = this._getNodeIconNames(node);
+    const headerH = this.theme.headerHeight ?? 22;
+    const iconSize = 12;
+    const iconPad = 8;
+    const { x, y, w } = node.computed;
+    const cy = y + headerH / 2;
+    const rects = [];
+    const hasError = !!node._execError;
+
+    // Right-side icon stack (mirrors _drawNode order)
+    let rightOff = 13;
+    if (hasError) {
+      rects.push({ cx: x + w - rightOff, cy, r: 10, name: '__error__', index: -1 });
+      rightOff += 14;
+    }
+    if (node.locked) {
+      rects.push({ cx: x + w - rightOff, cy, r: 10, name: '__lock__', index: -2 });
+      rightOff += 14;
+    }
+    iconNames.forEach((name, i) => {
+      if (name === 'expand') {
+        rects.push({ cx: x + w - rightOff, cy, r: 10, name, index: i });
+        rightOff += 14;
+      } else {
+        rects.push({ cx: x + iconPad + iconSize * 0.5, cy, r: 10, name, index: i });
+      }
+    });
+    return rects;
+  }
+
   _getEdgePortType(graph, e) {
     const from = graph.nodes.get(e.fromNode);
     if (!from) return "data";
@@ -460,8 +510,9 @@ export class CanvasRenderer {
   _drawNode(node, selected, skipPorts = false) {
     const { ctx, theme } = this;
     const r = theme.nodeRadius ?? 8;
+    const accentRadius = Math.max(0, r - 2 / this.scale);
     const { x, y, w, h } = node.computed;
-    const headerH = theme.headerHeight ?? 28;
+    const headerH = theme.headerHeight ?? 22;
 
     // Get color from node or registry
     const typeDef = this.registry?.types?.get(node.type);
@@ -518,12 +569,23 @@ export class CanvasRenderer {
     ctx.fill();
     ctx.restore();
 
+    // Accent bar — red when node has a runtime error
+    const hasError = !!node._execError;
     ctx.save();
-    ctx.fillStyle = this._rgba(categoryColor, 0.92);
+    ctx.fillStyle = hasError ? 'rgba(239,68,68,0.92)' : this._rgba(categoryColor, 0.92);
     ctx.beginPath();
-    ctx.roundRect(x, y, w, 4 / this.scale, { tl: r, tr: r, br: 0, bl: 0 });
+    ctx.roundRect(x, y, w, 2.5 / this.scale, { tl: accentRadius, tr: accentRadius, br: 0, bl: 0 });
     ctx.fill();
     ctx.restore();
+
+    // Error tint overlay on header
+    if (hasError) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(239,68,68,0.07)';
+      roundRect(ctx, x, y, w, headerH, { tl: r, tr: r, br: 0, bl: 0 });
+      ctx.fill();
+      ctx.restore();
+    }
 
     ctx.save();
     ctx.strokeStyle = "rgba(255,255,255,0.05)";
@@ -534,12 +596,73 @@ export class CanvasRenderer {
     ctx.stroke();
     ctx.restore();
 
+    // Header layout: [leftPad][icon][gap][title...][...][expand-btn]
+    const iconNames = this._getNodeIconNames(node);
+    const iconSize = 12;
+    const iconPad = 8;
+    const iconGap = 4;
+    const cy = y + headerH / 2;
+
+    // Primary type icon — left of title (all except 'expand')
+    const primaryIcon = iconNames.find(n => n !== 'expand');
+    let titleX = x + iconPad;
+    if (primaryIcon && this.iconManager) {
+      const cx = x + iconPad + iconSize * 0.5;
+      this.iconManager.draw(ctx, primaryIcon, cx, cy, iconSize, node);
+      titleX = cx + iconSize * 0.5 + iconGap;
+    }
+
+    // Locked node: subtle bottom-right badge + body hatch
+    if (node.locked) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1 / this.scale;
+      const step = 10 / this.scale;
+      ctx.beginPath();
+      for (let d = step; d < w + h; d += step) {
+        ctx.moveTo(x + Math.min(d, w), y + headerH + Math.max(0, d - w));
+        ctx.lineTo(x + Math.max(0, d - (h - headerH)), y + headerH + Math.min(d, h - headerH));
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Right-side icon stack: icons added right-to-left, each 14px wide
+    // rightOff = distance from right edge to current slot center
+    let rightOff = 13;
+
+    if (hasError && this.iconManager) {
+      this.iconManager.draw(ctx, 'warning', x + w - rightOff, cy, iconSize, node);
+      rightOff += 14;
+    }
+
+    if (node.locked && this.iconManager) {
+      this.iconManager.draw(ctx, 'lock', x + w - rightOff, cy, iconSize, node);
+      rightOff += 14;
+    }
+
+    const hasExpand = iconNames.includes('expand');
+    if (hasExpand && this.iconManager) {
+      const btnCx = x + w - rightOff;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      ctx.beginPath();
+      ctx.roundRect(btnCx - 9, cy - 8, 18, 16, 3);
+      ctx.fill();
+      ctx.restore();
+      this.iconManager.draw(ctx, 'expand', btnCx, cy, iconSize, node);
+      rightOff += 14;
+    }
+
+    const rightReserved = rightOff;
+
     // Title
-    this._drawScreenText(node.title, x + 10, y + headerH / 2, {
+    this._drawScreenText(node.title, titleX, cy, {
       fontPx: CanvasRenderer.FONT_SIZE,
       color: theme.text,
       baseline: "middle",
       align: "left",
+      maxWidth: x + w - titleX - rightReserved,
     });
 
     if (skipPorts) return;
@@ -698,26 +821,102 @@ export class CanvasRenderer {
     };
   }
 
+  _drawEdgeLabel(wx, wy, text) {
+    const { ctx } = this;
+    const fontSize = Math.max(9, 11 / this.scale);
+    ctx.save();
+    ctx.font = `500 ${fontSize}px ${this.theme.fontFamily || "Inter, sans-serif"}`;
+    const metrics = ctx.measureText(text);
+    const tw = metrics.width;
+    const th = fontSize;
+    const padX = 5 / this.scale;
+    const padY = 3 / this.scale;
+    const rx = 4 / this.scale;
+    const bw = tw + padX * 2;
+    const bh = th + padY * 2;
+    const bx = wx - bw / 2;
+    const by = wy - bh / 2;
+    ctx.fillStyle = "rgba(20,20,30,0.82)";
+    ctx.strokeStyle = "rgba(120,120,160,0.45)";
+    ctx.lineWidth = 0.8 / this.scale;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, rx);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "rgba(220,220,255,0.9)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, wx, wy);
+    ctx.restore();
+  }
+
+  _getOrthogonalRouteValues(endpoints, route = {}) {
+    const { x1, y1, x2, y2 } = endpoints;
+    const dir = x2 >= x1 ? 1 : -1;
+    const span = Math.abs(x2 - x1);
+    const minGap = Math.min(12, span / 3);
+    const clampAlongFlow = (value, min, max) =>
+      dir > 0 ? Math.max(min, Math.min(max, value)) : Math.min(min, Math.max(max, value));
+    const legacySplitX1 = Number.isFinite(route.splitX1) ? route.splitX1 : null;
+    const legacySplitX2 = Number.isFinite(route.splitX2) ? route.splitX2 : null;
+    const fallbackSplitX = Number.isFinite(route.splitX)
+      ? route.splitX
+      : legacySplitX1 != null && legacySplitX2 != null
+        ? (legacySplitX1 + legacySplitX2) / 2
+        : (x1 + x2) / 2;
+    const fromXRaw = Number.isFinite(route.fromX)
+      ? route.fromX
+      : legacySplitX1 != null
+        ? legacySplitX1
+        : fallbackSplitX;
+    const splitXRaw = Number.isFinite(route.splitX) ? route.splitX : fallbackSplitX;
+    const toXRaw = Number.isFinite(route.toX)
+      ? route.toX
+      : legacySplitX2 != null
+        ? legacySplitX2
+        : fallbackSplitX;
+    const fromX = clampAlongFlow(fromXRaw, x1, x2);
+    const toXBase = clampAlongFlow(toXRaw, x1, x2);
+    const orderedMin = dir > 0 ? fromX + minGap : fromX - minGap;
+    const orderedToX = clampAlongFlow(toXBase, orderedMin, x2);
+    const splitMin = dir > 0 ? fromX + minGap * 0.5 : fromX - minGap * 0.5;
+    const splitMax = dir > 0 ? orderedToX - minGap * 0.5 : orderedToX + minGap * 0.5;
+    const splitX = clampAlongFlow(splitXRaw, splitMin, splitMax);
+    const toMin = dir > 0 ? splitX + minGap * 0.5 : splitX - minGap * 0.5;
+    const toX = clampAlongFlow(orderedToX, toMin, x2);
+    const legacySplitY = Number.isFinite(route.splitY) ? route.splitY : null;
+    const topY = Number.isFinite(route.topY) ? route.topY : legacySplitY != null ? legacySplitY : y1;
+    const bottomY = Number.isFinite(route.bottomY) ? route.bottomY : legacySplitY != null ? legacySplitY : y2;
+
+    return { fromX, splitX, toX, topY, bottomY };
+  }
+
   _getOrthogonalPointsFromEdge(graph, e) {
     const endpoints = this._getEdgeEndpoints(graph, e);
     if (!endpoints) return [];
 
     const { x1, y1, x2, y2 } = endpoints;
-    const dir = x2 >= x1 ? 1 : -1;
-    const defaultOffset = Math.max(36, Math.abs(x2 - x1) * 0.3);
-    const route = e.route || {};
-    const splitX1 = Number.isFinite(route.splitX1) ? route.splitX1 : x1 + defaultOffset * dir;
-    const splitX2 = Number.isFinite(route.splitX2) ? route.splitX2 : x2 - defaultOffset * dir;
-    const splitY = Number.isFinite(route.splitY) ? route.splitY : (y1 + y2) / 2;
+    const { fromX, splitX, toX, topY, bottomY } = this._getOrthogonalRouteValues(
+      endpoints,
+      e.route || {}
+    );
 
-    return [
+    const rawPoints = [
       { x: x1, y: y1 },
-      { x: splitX1, y: y1 },
-      { x: splitX1, y: splitY },
-      { x: splitX2, y: splitY },
-      { x: splitX2, y: y2 },
+      { x: fromX, y: y1 },
+      { x: fromX, y: topY },
+      { x: splitX, y: topY },
+      { x: splitX, y: bottomY },
+      { x: toX, y: bottomY },
+      { x: toX, y: y2 },
       { x: x2, y: y2 },
     ];
+
+    return rawPoints.filter((point, index) => {
+      if (index === 0) return true;
+      const prev = rawPoints[index - 1];
+      return prev.x !== point.x || prev.y !== point.y;
+    });
   }
 
   _getEdgePolylinePoints(graph, e) {
@@ -934,6 +1133,16 @@ export class CanvasRenderer {
         ctx.lineWidth = 2.0 / this.scale;
         this._drawEdge(graph, e);
       }
+
+      // Edge label at geometric midpoint
+      if (e.label) {
+        const ep = this._getEdgeEndpoints(graph, e);
+        if (ep) {
+          const mx = (ep.x1 + ep.x2) / 2;
+          const my = (ep.y1 + ep.y2) / 2;
+          this._drawEdgeLabel(mx, my, e.label);
+        }
+      }
     }
 
     // Selection borders for HTML overlay nodes (drawn above the HTML layer)
@@ -958,9 +1167,9 @@ export class CanvasRenderer {
       const b = this.screenToWorld(tempEdge.x2, tempEdge.y2);
 
       const prevDash = this.ctx.getLineDash();
-      this.ctx.setLineDash([5 / this.scale, 5 / this.scale]);
-      this.ctx.strokeStyle = this._rgba(this.theme.accentBright, 0.7);
-      this.ctx.lineWidth = 5.5 / this.scale;
+      this.ctx.setLineDash([5 / this.scale, 7 / this.scale]);
+      this.ctx.strokeStyle = tempEdge.incompatible ? 'rgba(239,68,68,0.85)' : this._rgba(this.theme.accentBright, 0.7);
+      this.ctx.lineWidth = 1.5 / this.scale;
 
       let ptsForArrow = null;
       if (this.edgeStyle === "line") {
@@ -985,7 +1194,7 @@ export class CanvasRenderer {
         const p1 = ptsForArrow[ptsForArrow.length - 2];
         const p2 = ptsForArrow[ptsForArrow.length - 1];
         this.ctx.fillStyle = this.theme.accentBright;
-        this._drawArrowhead(p1.x, p1.y, p2.x, p2.y, 10);
+        this._drawArrowhead(p1.x, p1.y, p2.x, p2.y, 8);
       }
     }
 

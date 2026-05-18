@@ -299,3 +299,196 @@
   background: rgba(255, 255, 255, 0.08);
   color: var(--color-text-secondary);
 }
+
+/* ── Property widget: Custom Select ──────────────────────────── */
+.prop-select-wrap {
+  position: relative;
+  user-select: none;
+}
+
+.prop-select-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--color-text-main);
+  font-size: 12px;
+  font-family: var(--font-main);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+  box-sizing: border-box;
+}
+
+.prop-select-btn:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.prop-select-wrap.prop-select-open .prop-select-btn {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.15);
+}
+
+.prop-select-wrap.prop-select-disabled .prop-select-btn {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.prop-select-arrow {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.35);
+  transition: transform 0.15s;
+}
+
+.prop-select-wrap.prop-select-open .prop-select-arrow {
+  transform: rotate(180deg);
+}
+
+.prop-select-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: #16182a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.prop-select-wrap.prop-select-open .prop-select-menu {
+  display: block;
+}
+
+.prop-select-item {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: var(--font-main);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.prop-select-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-main);
+}
+
+.prop-select-item.selected {
+  color: var(--color-primary);
+  background: rgba(94, 106, 210, 0.08);
+}
+
+/* ── Property widget: Slider ──────────────────────────────────── */
+.prop-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prop-slider-wrap input[type="range"] {
+  flex: 1;
+  height: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.prop-slider-val {
+  min-width: 36px;
+  text-align: right;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+/* ── Property widget: Toggle ──────────────────────────────────── */
+.prop-toggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.prop-toggle input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.prop-toggle-track {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.prop-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  transition: transform 0.15s, background 0.15s;
+}
+
+.prop-toggle input:checked + .prop-toggle-track {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.prop-toggle input:checked + .prop-toggle-track::after {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+/* ── Property widget: Color ───────────────────────────────────── */
+.field input[type="color"] {
+  padding: 2px 4px;
+  height: 32px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Property widget: Textarea ────────────────────────────────── */
+.field textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--color-text-main);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.field textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.15);
+}

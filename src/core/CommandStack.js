@@ -1,12 +1,16 @@
 // src/core/CommandStack.js
 export class CommandStack {
-  constructor() {
+  constructor({ maxHistory = 200 } = {}) {
     this.undoStack = [];
     this.redoStack = [];
+    this.maxHistory = maxHistory;
   }
   exec(cmd) {
     cmd.do();
     this.undoStack.push(cmd);
+    if (this.undoStack.length > this.maxHistory) {
+      this.undoStack.shift();
+    }
     this.redoStack.length = 0;
   }
   undo() {

@@ -1,4 +1,6 @@
 // src/core/commands.js
+import { Edge } from "./Edge.js";
+import { deepClone } from "../utils/utils.js";
 
 // Find an edge id by its endpoints (fallback for undo)
 function findEdgeId(graph, a, b, c, d) {
@@ -41,10 +43,46 @@ export function MoveNodesCmd(nodesInfo) {
   };
 }
 
+/** Returns "exec"|"data"|null for a port given its node and direction */
+function portTypeOf(graph, nodeId, portId, dir) {
+  const node = graph.nodes.get(nodeId);
+  if (!node) return null;
+  const list = dir === "out" ? node.outputs : node.inputs;
+  return list.find(p => p.id === portId)?.portType ?? null;
+}
+
+/** Returns the data-type ("any", "number", …) of a port */
+function dataTypeOf(graph, nodeId, portId, dir) {
+  const node = graph.nodes.get(nodeId);
+  if (!node) return "any";
+  const list = dir === "out" ? node.outputs : node.inputs;
+  return list.find(p => p.id === portId)?.datatype ?? "any";
+}
+
+/**
+ * Check whether two ports can be connected.
+ * Returns { ok: boolean, reason?: string }
+ */
+export function checkPortCompatibility(graph, fromNode, fromPort, toNode, toPort) {
+  const fromPT = portTypeOf(graph, fromNode, fromPort, "out");
+  const toPT   = portTypeOf(graph, toNode,   toPort,  "in");
+  if (fromPT && toPT && fromPT !== toPT) {
+    return { ok: false, reason: `Cannot connect ${fromPT} → ${toPT} port` };
+  }
+  const fromDT = dataTypeOf(graph, fromNode, fromPort, "out");
+  const toDT   = dataTypeOf(graph, toNode,   toPort,  "in");
+  if (fromDT !== "any" && toDT !== "any" && fromDT !== toDT) {
+    return { ok: true, warn: `Type mismatch: ${fromDT} → ${toDT}` };
+  }
+  return { ok: true };
+}
+
 export function AddEdgeCmd(graph, fromNode, fromPort, toNode, toPort) {
   let addedId = null;
   return {
     do() {
+      const compat = checkPortCompatibility(graph, fromNode, fromPort, toNode, toPort);
+      if (!compat.ok) return; // silently reject incompatible connections
       graph.addEdge(fromNode, fromPort, toNode, toPort);
       addedId = findEdgeId(graph, fromNode, fromPort, toNode, toPort);
     },
@@ -60,7 +98,10 @@ export function RemoveEdgeCmd(graph, edgeId) {
   const e = graph.edges.get(edgeId);
   if (!e) return null;
   // capture for undo
-  const snapshot = { ...e, route: e.route ? { ...e.route } : null };
+  const snapshot = new Edge({
+    ...e,
+    route: deepClone(e.route),
+  });
   return {
     do() {
       graph.edges.delete(edgeId);
@@ -157,11 +198,11 @@ export function ChangeEdgeRouteCmd(graph, edgeId, fromRoute, toRoute) {
   return {
     do() {
       const edge = graph.edges.get(edgeId);
-      if (edge) edge.route = JSON.parse(JSON.stringify(toRoute));
+      if (edge) edge.route = deepClone(toRoute);
     },
     undo() {
       const edge = graph.edges.get(edgeId);
-      if (edge) edge.route = JSON.parse(JSON.stringify(fromRoute));
+      if (edge) edge.route = deepClone(fromRoute);
     },
   };
 }
@@ -171,7 +212,7 @@ export function AddNodeCmd(graph, type, data) {
     addedNode: null,
     do() {
       this.addedNode = graph.addNode(type, data);
-      if (data.state) this.addedNode.state = JSON.parse(JSON.stringify(data.state));
+      if (data.state) this.addedNode.state = deepClone(data.state);
     },
     undo() {
       if (this.addedNode) graph.removeNode(this.addedNode.id);

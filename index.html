@@ -6,7 +6,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="./src/ui/PropertyPanel.css" />
     <link rel="stylesheet" href="./index.css" />
-    <link rel="icon" href="./public/img/favicon.svg" />
+    <link rel="icon" href="/img/favicon.svg" />
   </head>
 
   <body>
@@ -21,7 +21,7 @@
 
           <!-- Edge style -->
           <label>
-            <span style="color: var(--color-text-disabled); font-size: 10px;">Edges</span>
+            <span style="color: var(--color-text-disabled); font-size: 10px">Edges</span>
             <select id="edgeStyleSelector">
               <option value="bezier">Curved</option>
               <option value="orthogonal" selected>Orthogonal</option>
@@ -33,14 +33,22 @@
 
           <!-- Execution mode -->
           <div class="mode-toggle" id="modeToggle">
-            <button class="active" data-mode="run" title="Run — execute all nodes continuously">Run</button>
+            <button class="active" data-mode="run" title="Run — execute all nodes continuously">
+              Run
+            </button>
             <button data-mode="step" title="Step — execute one step at a time">Step</button>
           </div>
 
           <div class="toolbar-sep"></div>
 
           <!-- View controls -->
-          <button id="fitBtn" title="Fit all nodes into view (F)" style="font-size:12px; padding: 3px 8px;">Fit</button>
+          <button
+            id="fitBtn"
+            title="Fit all nodes into view (F)"
+            style="font-size: 12px; padding: 3px 8px"
+          >
+            Fit
+          </button>
           <div class="zoom-controls">
             <button id="zoomInBtn" title="Zoom in">+</button>
             <button id="zoomOutBtn" title="Zoom out">−</button>
@@ -164,17 +172,13 @@
           const reader = new FileReader();
           reader.onload = (ev) => {
             try {
-              editor.graph.clear();
+              editor.subNodePanel?.close();
               editor.graph.fromJSON(JSON.parse(ev.target.result));
               if (editor.htmlOverlay) editor.htmlOverlay.clear();
-              // Re-init trigger nodes
-              for (const node of editor.graph.nodes.values()) {
-                if (node.type === "util/Trigger") {
-                  node.__runnerRef = editor.runner;
-                  node.__controllerRef = editor.controller;
-                }
-              }
-              editor.render();
+              requestAnimationFrame(() => {
+                editor.controller?.fitToView({ padding: 80, maxScale: 1.5 });
+                editor.render();
+              });
             } catch (err) {
               console.error(err);
               alert("Failed to load file. Please check the JSON format.");
@@ -188,23 +192,34 @@
       // ── Initial load ────────────────────────────────────────────
       async function loadExample() {
         try {
-          const res = await fetch("example.json");
+          const exampleUrl = `${import.meta.env.BASE_URL}example.json`;
+          const res = await fetch(exampleUrl);
           if (!res.ok) throw new Error("no example.json");
           const json = await res.json();
-          editor.graph.clear();
           editor.graph.fromJSON(json);
-          if (editor.htmlOverlay) editor.htmlOverlay.clear();
-          for (const node of editor.graph.nodes.values()) {
-            if (node.type === "util/Trigger") {
-              node.__runnerRef = editor.runner;
-              node.__controllerRef = editor.controller;
+
+          // Defer render to next frame so ResizeObserver has settled the canvas
+          // dimensions before we draw (canvas starts at 0×0 on first paint).
+          requestAnimationFrame(() => {
+            editor.controller?.fitToView({ padding: 140, maxScale: 0.95 });
+            editor.render();
+            updateSnapIndicator();
+            try {
+              const sgNode = editor.graph.nodes.get("n-sg");
+              if (sgNode && editor.subNodePanel) {
+                editor.subNodePanel.open(sgNode, sgNode.state.subGraphData, ["메인 그래프", sgNode.title]);
+              }
+            } catch (err) {
+              console.warn("[loadExample] sub-panel open failed:", err);
             }
+          });
+        } catch (err) {
+          if (err.message !== "no example.json") {
+            console.warn("[loadExample] failed to load example.json:", err);
           }
-        } catch (_) {
-          // no example — start blank
+          editor.render();
+          updateSnapIndicator();
         }
-        editor.render();
-        updateSnapIndicator();
       }
 
       loadExample();

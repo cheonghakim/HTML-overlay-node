@@ -8,6 +8,7 @@ export function registerCoreNodes(registry, hooks) {
     registry.register("core/Note", {
         title: "Note",
         color: "#06b6d4", // vivid cyan
+        icon: "note-text",
         size: { w: 180 },
         inputs: [{ name: "in", datatype: "any" }],
         outputs: [{ name: "out", datatype: "any" }],
@@ -28,6 +29,7 @@ export function registerCoreNodes(registry, hooks) {
     registry.register("core/HtmlNote", {
         title: "HTML Note",
         color: "#2563eb", // vivid blue
+        icon: "code-braces",
         size: { w: 220 },
         inputs: [{ name: "in", datatype: "any" }],
         outputs: [{ name: "out", datatype: "any" }],
@@ -78,6 +80,7 @@ export function registerCoreNodes(registry, hooks) {
     registry.register("core/TodoNode", {
         title: "Task list",
         color: "#059669", // vivid emerald
+        icon: "format-list-checks",
         size: { w: 240, h: 300 },
         inputs: [{ name: "in", datatype: "any" }],
         outputs: [{ name: "out", datatype: "any" }],
@@ -202,7 +205,7 @@ export function registerCoreNodes(registry, hooks) {
         size: { w: 240, h: 160 },
         onDraw(node, { ctx, theme, renderer }) {
             const { x, y, w, h } = node.computed;
-            const headerH = theme.headerHeight ?? 28;
+            const headerH = theme.headerHeight ?? 22;
             const color = node.state.color || node.color || "#39424e";
             const bgAlpha = 0.12;
             const textColor = theme.text || "#e9e9ef";

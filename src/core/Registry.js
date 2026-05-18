@@ -36,6 +36,23 @@ export class Registry {
   }
 
   /**
+   * Register or silently replace a node type.
+   * Unlike register(), does not throw if the type already exists.
+   * Useful for overriding built-in nodes with custom implementations.
+   * @param {string} type - Unique type identifier
+   * @param {Object} def  - Node definition
+   */
+  registerOrReplace(type, def) {
+    if (!type || typeof type !== 'string') {
+      throw new Error(`Invalid node type: type must be a non-empty string, got ${typeof type}`);
+    }
+    if (!def || typeof def !== 'object') {
+      throw new Error(`Invalid definition for type "${type}": definition must be an object`);
+    }
+    this.types.set(type, def);
+  }
+
+  /**
    * Unregister a node type
    * @param {string} type - Type identifier to unregister
    * @throws {Error} If type doesn't exist
@@ -52,6 +69,15 @@ export class Registry {
    */
   removeAll() {
     this.types.clear();
+  }
+
+  /**
+   * Check whether a node type is registered.
+   * @param {string} type - Type identifier
+   * @returns {boolean}
+   */
+  has(type) {
+    return this.types.has(type);
   }
 
   /**

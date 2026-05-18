@@ -73,3 +73,12 @@ export function randomUUID() {
     hex.slice(10, 16).join("")
   );
 }
+
+export function deepClone(value) {
+  if (typeof globalThis.structuredClone === "function") {
+    return globalThis.structuredClone(value);
+  }
+
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}

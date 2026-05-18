@@ -29,7 +29,7 @@ export function portRect(node, port, idx, dir) {
 
   // Fixed spacing
   // Sync with CanvasRenderer default header height
-  const headerHeight = 28;
+  const headerHeight = 22;
   const padding = 8;
   const portSpacing = 20;
   const y = ny + headerHeight + padding + (idx * portSpacing) + portSpacing / 2;

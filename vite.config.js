@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/HTML-overlay-node/",
+  base: process.env.BUILD_DEMO ? "./" : "/",
   build: process.env.BUILD_DEMO
     ? {
       outDir: "dist",
@@ -17,7 +17,7 @@ export default defineConfig({
     },
   test: {
     globals: true,
-    environment: "jsdom",
+    environment: "node",
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],

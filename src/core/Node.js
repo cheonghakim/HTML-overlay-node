@@ -34,6 +34,11 @@ export class Node {
     this.parent = null; // Parent Node (or null if root)
     this.children = new Set(); // Set<Node>
     this.computed = { x: 0, y: 0, w: 0, h: 0 }; // World Transform
+
+    // Enterprise fields
+    this.locked = false;          // Prevent move/resize/delete
+    this.description = "";        // Tooltip / documentation
+    this._execError = null;       // { message, timestamp } when last execution failed
   }
 
   /**
@@ -47,7 +52,7 @@ export class Node {
    * Recalculate minimum size based on ports
    */
   _updateMinSize() {
-    const HEADER_HEIGHT = 28;
+    const HEADER_HEIGHT = 22;
     const PORT_SPACING = 24;
     const BOTTOM_PADDING = 10;
 
@@ -65,7 +70,7 @@ export class Node {
   addInput(name, datatype = "any", portType = "data") {
     // ... existing validation ...
     if (typeof name !== "string" || (portType === "data" && !name)) {
-      throw new Error("Input port name must be a string (non-empty for data ports)");
+      throw new Error("Input port name must be a non-empty string for data ports");
     }
     const port = { id: randomUUID(), name, datatype, portType, dir: "in" };
     this.inputs.push(port);
@@ -76,7 +81,7 @@ export class Node {
   addOutput(name, datatype = "any", portType = "data") {
     // ... existing validation ...
     if (typeof name !== "string" || (portType === "data" && !name)) {
-      throw new Error("Output port name must be a string (non-empty for data ports)");
+      throw new Error("Output port name must be a non-empty string for data ports");
     }
     const port = { id: randomUUID(), name, datatype, portType, dir: "out" };
     this.outputs.push(port);

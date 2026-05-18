@@ -2,13 +2,26 @@
   "name": "html-overlay-node",
   "version": "0.2.0",
   "description": "LiteGraph-style node editor with HTML overlay support",
-  "main": "./src/index.js",
-  "module": "./src/index.js",
+  "main": "./dist/html-overlay-node.umd.js",
+  "module": "./dist/html-overlay-node.es.js",
+  "types": "./index.d.ts",
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
-    "./nodes": "./src/nodes/index.js",
-    "./defaults": "./src/defaults/index.js",
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./dist/html-overlay-node.es.js",
+      "require": "./dist/html-overlay-node.umd.js"
+    },
+    "./nodes": {
+      "types": "./index.d.ts",
+      "import": "./src/nodes/index.js",
+      "require": "./src/nodes/index.js"
+    },
+    "./defaults": {
+      "types": "./index.d.ts",
+      "import": "./src/defaults/index.js",
+      "require": "./src/defaults/index.js"
+    },
     "./index.css": "./index.css",
     "./src/ui/PropertyPanel.css": "./src/ui/PropertyPanel.css"
   },
@@ -16,6 +29,7 @@
     "dist",
     "src",
     "index.css",
+    "index.d.ts",
     "README.md",
     "LICENSE"
   ],

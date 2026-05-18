@@ -3,12 +3,13 @@
  * Provides basic mathematical operation nodes
  */
 
-const MATH_COLOR = "#e11d48"; // vivid rose-red
+const MATH_COLOR = "#659fd6"; // vivid rose-red
 
 export function registerMathNodes(registry) {
     registry.register("math/Add", {
         title: "Add",
         color: MATH_COLOR,
+        icon: "plus",
         size: { w: 140 },
         inputs: [
             { name: "exec", portType: "exec" },
@@ -38,6 +39,7 @@ export function registerMathNodes(registry) {
     registry.register("math/Subtract", {
         title: "Subtract",
         color: MATH_COLOR,
+        icon: "minus",
         size: { w: 140 },
         inputs: [
             { name: "a", datatype: "number" },
@@ -54,6 +56,7 @@ export function registerMathNodes(registry) {
     registry.register("math/Multiply", {
         title: "Multiply",
         color: MATH_COLOR,
+        icon: "times",
         size: { w: 140 },
         inputs: [
             { name: "exec", portType: "exec" },
@@ -81,6 +84,7 @@ export function registerMathNodes(registry) {
     registry.register("math/Divide", {
         title: "Divide",
         color: MATH_COLOR,
+        icon: "divide",
         size: { w: 140 },
         inputs: [
             { name: "a", datatype: "number" },

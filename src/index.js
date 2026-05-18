@@ -12,6 +12,10 @@ import { Minimap } from "./minimap/Minimap.js";
 import { PropertyPanel } from "./ui/PropertyPanel.js";
 import { HelpOverlay } from "./ui/HelpOverlay.js";
 import { setupDefaultContextMenu as defaultContextMenuSetup } from "./defaults/contextMenu.js";
+import { IconManager } from "./render/IconManager.js";
+import { SubGraphPanel as SubNodePanel } from "./render/SubGraphPanel.js";
+
+export { IconManager } from "./render/IconManager.js";
 
 
 
@@ -81,15 +85,31 @@ export function createGraphEditor(
       "group:change",
       "node:updated",
     ]);
+  // ── mainArea wrapper ────────────────────────────────────────────────────────
+  // SubGraphPanel adjusts mainArea's inset (top/bottom/left/right) to make room
+  // for the split pane.  All main canvases live inside mainArea so they resize
+  // automatically when the inset changes (canvas uses width/height: 100%).
+  const mainArea = document.createElement("div");
+  mainArea.id = "sg-main-area";
+  Object.assign(mainArea.style, {
+    position: "absolute",
+    top: "0", bottom: "0", left: "0", right: "0",
+    overflow: "hidden",
+  });
+  container.appendChild(mainArea);
+  // Move the main canvas (which may already be in container) into mainArea
+  mainArea.appendChild(canvas);
+
   const registry = new Registry();
   const graph = new Graph({ hooks, registry });
   const renderer = new CanvasRenderer(canvas, { theme, registry });
-  // HTML Overlay
-  const htmlOverlay = new HtmlOverlay(canvas.parentElement, renderer, registry);
+
+  // HTML Overlay — hosted inside mainArea so it stays within the main canvas area
+  const htmlOverlay = new HtmlOverlay(mainArea, renderer, registry);
 
   // Register callback to sync HTML overlay transform when renderer zoom/pan changes
   renderer.setTransformChangeCallback(() => {
-    // Calling controller.render() will internally call htmlOverlay.draw() 
+    // Calling controller.render() will internally call htmlOverlay.draw()
     // and redraw all canvas layers, ensuring perfect synchronization.
     controller.render();
   });
@@ -104,7 +124,7 @@ export function createGraphEditor(
     pointerEvents: "none", // Pass through clicks
     zIndex: "15", // Above HTML overlay (10), below port canvas (20)
   });
-  canvas.parentElement.appendChild(edgeCanvas);
+  mainArea.appendChild(edgeCanvas);
 
   // Create edge renderer (shares transform with main renderer)
   const edgeRenderer = new CanvasRenderer(edgeCanvas, { theme, registry });
@@ -132,7 +152,7 @@ export function createGraphEditor(
     pointerEvents: "none", // Pass through clicks
     zIndex: "20", // Above edge canvas (15)
   });
-  canvas.parentElement.appendChild(portCanvas);
+  mainArea.appendChild(portCanvas);
 
   // Create port renderer (shares transform with main renderer)
   const portRenderer = new CanvasRenderer(portCanvas, { theme, registry });
@@ -142,6 +162,19 @@ export function createGraphEditor(
   portRenderer.offsetY = renderer.offsetY;
 
   const controller = new Controller({ graph, renderer, hooks, htmlOverlay, edgeRenderer, portRenderer });
+
+  // ResizeObserver callback: re-render canvas when HTML overlay node body resizes
+  htmlOverlay._onHeightChange = () => controller.render();
+
+  // Icon manager (shared between renderer and controller)
+  const icons = new IconManager();
+  renderer.iconManager = icons;
+  edgeRenderer.iconManager = icons;
+  controller.iconManager = icons;
+
+  // Sub-graph panel — split-pane editor docked inside the container
+  const subNodePanel = new SubNodePanel(mainArea, { registry, theme, iconManager: icons });
+  controller.subNodePanel = subNodePanel;
 
   // Create context menu after controller (needs commandStack)
   const contextMenu = new ContextMenu({
@@ -281,8 +314,11 @@ export function createGraphEditor(
     contextMenu,
     hooks, // Expose hooks for event handling
     registry, // Expose registry for node types
-    htmlOverlay, // Expose htmlOverlay for clearing/resetting
-    propertyPanel, // Expose propertyPanel
+    htmlOverlay,
+    propertyPanel,
+    iconManager: icons,
+    subNodePanel,       // alias
+    subGraphPanel: subNodePanel, // primary name
     render: () => controller.render(),
     start: () => runner.start(),
     stop: () => runner.stop(),
@@ -299,6 +335,7 @@ export function createGraphEditor(
       ro.disconnect();
       controller.destroy();
       htmlOverlay.destroy();
+      subNodePanel.destroy();
       contextMenu.destroy();
       if (propertyPanel) propertyPanel.destroy();
       if (minimap) minimap.destroy();

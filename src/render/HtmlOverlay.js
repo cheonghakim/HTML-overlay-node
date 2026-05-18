@@ -21,6 +21,12 @@ export class HtmlOverlay {
 
     /** @type {Map<string, HTMLElement>} */
     this.nodes = new Map();
+
+    /** ResizeObserver instances keyed by node id */
+    this._observers = new Map();
+
+    /** Callback to trigger canvas re-render; set by createGraphEditor */
+    this._onHeightChange = null;
   }
 
   /** 기본 노드 레이아웃 생성 (헤더 + 바디) */
@@ -39,7 +45,7 @@ export class HtmlOverlay {
     const header = document.createElement("div");
     header.className = "node-header";
     Object.assign(header.style, {
-      height: "26px",
+      height: "22px",
       flexShrink: "0",
       display: "flex",
       alignItems: "center",
@@ -94,8 +100,30 @@ export class HtmlOverlay {
       el.style.pointerEvents = "none"; // 기본적으로 캔버스 통과
       this.container.appendChild(el);
       this.nodes.set(node.id, el);
+
+      // ResizeObserver: sync node height when body content resizes
+      this._attachResizeObserver(node, el);
     }
     return el;
+  }
+
+  _attachResizeObserver(node, el) {
+    if (typeof ResizeObserver === "undefined") return;
+    const target = el._domParts?.body ?? el;
+    const obs = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const headerH = 22;
+        const contentH = entry.contentRect.height;
+        const newH = Math.max(node.size.height, headerH + contentH);
+        if (Math.abs(newH - node.size.height) > 1) {
+          node.size.height = newH;
+          node.computed.h = newH;
+          this._onHeightChange?.();
+        }
+      }
+    });
+    obs.observe(target);
+    this._observers.set(node.id, obs);
   }
 
   /** 그래프와 변환 동기화하여 렌더링 */
@@ -219,10 +247,9 @@ export class HtmlOverlay {
   }
 
   clear() {
-    // Remove all node elements
-    for (const [, el] of this.nodes) {
-      el.remove();
-    }
+    for (const [, obs] of this._observers) obs.disconnect();
+    this._observers.clear();
+    for (const [, el] of this.nodes) el.remove();
     this.nodes.clear();
   }
 

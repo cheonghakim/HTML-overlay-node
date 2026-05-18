@@ -4,11 +4,12 @@ const STEP_DURATION = 620;
 export function registerUtilNodes(registry) {
   registry.register("util/Trigger", {
     title: "Trigger",
-    color: "#f59e0b", // vivid amber
-    size: { w: 140, h: 100 },
+    color: "#f7cb4d",
+    icon: "play-circle",
+    size: { w: 140, h: 80 },
     outputs: [{ name: "exec", portType: "exec" }],
     html: {
-      init(node, el, { body }) {
+      init(node, el, { body, graph }) {
         el.classList.add("node-overlay");
 
         body.style.display = "flex";
@@ -29,11 +30,10 @@ export function registerUtilNodes(registry) {
 
           if (node.state._firing) return;
 
-          const editor = window.editor;
-          if (!editor?.controller || !editor?.runner) return;
-
-          const controller = editor.controller;
-          const runner = editor.runner;
+          // Use graph.controller / graph.runner so this works in sub-panels too
+          const controller = graph?.controller;
+          const runner = graph?.runner;
+          if (!controller || !runner) return;
 
           node.state.triggered = true;
           node.state._firing = true;
@@ -126,7 +126,8 @@ export function registerUtilNodes(registry) {
 
   registry.register("util/Watch", {
     title: "Watch",
-    color: "#10b981", // info (emerald)
+    color: "#10b981",
+    icon: "eye",
     size: { w: 180, h: 130 },
     inputs: [
       { name: "exec", portType: "exec" },
@@ -193,7 +194,8 @@ export function registerUtilNodes(registry) {
 
   registry.register("util/Print", {
     title: "Print",
-    color: "#10b981", // info (emerald)
+    color: "#10b981",
+    icon: "printer",
     size: { w: 140 },
     inputs: [
       { name: "", portType: "exec" },
@@ -209,7 +211,8 @@ export function registerUtilNodes(registry) {
 
   registry.register("util/Timer", {
     title: "Timer",
-    color: "#7baaf7", // event (amber)
+    color: "#7baaf7",
+    icon: "timer",
     size: { w: 140 },
     inputs: [
       { name: "", portType: "exec" },
@@ -224,6 +227,79 @@ export function registerUtilNodes(registry) {
         }, delay);
       });
       setOutput("", true);
+    },
+  });
+
+  // ── Widget Demo ──────────────────────────────────────────────────────────────
+  // Test node that showcases all property panel widget types.
+  // Connect its outputs to Watch or Print nodes to verify values update live.
+  registry.register("util/WidgetDemo", {
+    title: "Widget Demo",
+    color: "#7c3aed",
+    icon: "tune",
+    size: { w: 200 },
+    outputs: [
+      { name: "number", portType: "data", datatype: "number" },
+      { name: "text",   portType: "data", datatype: "string" },
+      { name: "flag",   portType: "data", datatype: "boolean" },
+    ],
+
+    properties: [
+      // Slider — real-time drag (no undo on drag, undo on release)
+      { key: "amount",  label: "Amount",  widget: "slider",  min: 0, max: 100, step: 1 },
+      // Number input
+      { key: "gain",    label: "Gain",    widget: "number",  min: 0, max: 10,  step: 0.1 },
+      // Dropdown
+      { key: "mode",    label: "Mode",    widget: "select",
+        options: ["linear", "exponential", { label: "S-Curve", value: "scurve" }] },
+      // Toggle switch
+      { key: "enabled", label: "Enabled", widget: "toggle" },
+      // Color picker
+      { key: "tint",    label: "Color",   widget: "color" },
+      // Text input
+      { key: "label",   label: "Label",   widget: "text",    placeholder: "enter label…" },
+      // Multiline
+      { key: "notes",   label: "Notes",   widget: "textarea", placeholder: "notes…" },
+      // Slider with custom onChange — also updates a derived "clipped" key atomically
+      {
+        key: "threshold",
+        label: "Threshold",
+        widget: "slider",
+        min: 0, max: 1, step: 0.01,
+        onChange(node, value, { controller, graph, immediate }) {
+          const clipped = value > 0.8;
+          if (immediate) {
+            // Live drag: mutate directly so canvas redraws without undo entry
+            node.state.threshold = value;
+            node.state.clipped   = clipped;
+            graph.hooks.emit("node:updated", node);
+          } else {
+            // Release: commit to undo history
+            controller.updateNodeState(node.id, {
+              ...node.state, threshold: value, clipped,
+            });
+          }
+        },
+      },
+    ],
+
+    onCreate(node) {
+      node.state.amount    ??= 50;
+      node.state.gain      ??= 1.0;
+      node.state.mode      ??= "linear";
+      node.state.enabled   ??= true;
+      node.state.tint      ??= "#6366f1";
+      node.state.label     ??= "hello";
+      node.state.notes     ??= "";
+      node.state.threshold ??= 0.5;
+      node.state.clipped   ??= false;
+    },
+
+    onExecute(node, { setOutput }) {
+      const base = node.state.amount * node.state.gain;
+      setOutput("number", node.state.mode === "exponential" ? base ** 2 / 100 : base);
+      setOutput("text",   `${node.state.label} [${node.state.mode}]`);
+      setOutput("flag",   node.state.enabled);
     },
   });
 }

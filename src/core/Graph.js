@@ -1,17 +1,15 @@
 import { Node } from "./Node.js";
 import { Edge } from "./Edge.js";
 import { GroupManager } from "../groups/GroupManager.js";
+import { deepClone } from "../utils/utils.js";
 
 /**
  * Graph manages the collection of nodes and edges
  */
 export class Graph {
-  /**
-   * Create a new Graph
-   * @param {Object} options - Graph configuration
-   * @param {Object} options.hooks - Event hooks system
-   * @param {Object} options.registry - Node type registry
-   */
+  static SCHEMA_VERSION = 2;
+  static DEFAULT_META = { name: "Untitled", description: "", author: "" };
+
   constructor({ hooks, registry }) {
     if (!registry) {
       throw new Error("Graph requires a registry");
@@ -20,31 +18,21 @@ export class Graph {
     this.edges = new Map();
     this.hooks = hooks;
     this.registry = registry;
-    // double buffer for deterministic cycles
-    this._valuesA = new Map(); // current
-    this._valuesB = new Map(); // next
+    this._valuesA = new Map();
+    this._valuesB = new Map();
     this._useAasCurrent = true;
+    this.meta = { ...Graph.DEFAULT_META };
 
     this.groupManager = new GroupManager({
       graph: this,
       hooks: this.hooks,
     });
   }
-  /**
-   * Get a node by its ID
-   * @param {string} id - Node ID
-   * @returns {Node|null} The node or null if not found
-   */
+
   getNodeById(id) {
     return this.nodes.get(id) || null;
   }
-  /**
-   * Add a node to the graph
-   * @param {string} type - Node type identifier
-   * @param {Object} [opts={}] - Additional node options (x, y, width, height, etc.)
-   * @returns {Node} The created node
-   * @throws {Error} If node type is not registered
-   */
+
   addNode(type, opts = {}) {
     const def = this.registry.types.get(type);
     if (!def) {
@@ -52,7 +40,7 @@ export class Graph {
       throw new Error(`Unknown node type: "${type}". Available types: ${available}`);
     }
     const height = opts.height || def.size?.h || this._calculateDefaultNodeHeight(def);
-    
+
     const node = new Node({
       type,
       title: def.title,
@@ -60,67 +48,60 @@ export class Graph {
       height,
       ...opts,
     });
-    for (const i of def.inputs || []) node.addInput(i.name, i.datatype, i.portType || "data");
-    for (const o of def.outputs || []) node.addOutput(o.name, o.datatype, o.portType || "data");
+    for (const input of def.inputs || []) {
+      node.addInput(input.name, input.datatype, input.portType || "data");
+    }
+    for (const output of def.outputs || []) {
+      node.addOutput(output.name, output.datatype, output.portType || "data");
+    }
     def.onCreate?.(node);
     this.nodes.set(node.id, node);
     this.hooks?.emit("node:create", node);
     return node;
   }
-  /**
-   * Remove a node and its connected edges from the graph
-   * @param {string} nodeId - ID of the node to remove
-   */
+
   removeNode(nodeId) {
-    // Remove all edges connected to this node
-    for (const [eid, e] of this.edges) {
-      if (e.fromNode === nodeId || e.toNode === nodeId) {
-        this.edges.delete(eid);
+    for (const [edgeId, edge] of this.edges) {
+      if (edge.fromNode === nodeId || edge.toNode === nodeId) {
+        this.edges.delete(edgeId);
       }
     }
     this.nodes.delete(nodeId);
   }
-  /**
-   * Add an edge connecting two node ports
-   * @param {string} fromNode - Source node ID
-   * @param {string} fromPort - Source port ID
-   * @param {string} toNode - Target node ID
-   * @param {string} toPort - Target port ID
-   * @returns {Edge} The created edge
-   * @throws {Error} If nodes don't exist
-   */
+
   addEdge(fromNode, fromPort, toNode, toPort) {
-    // Validate nodes exist
     if (!this.nodes.has(fromNode)) {
       throw new Error(`Cannot create edge: source node "${fromNode}" not found`);
     }
     if (!this.nodes.has(toNode)) {
       throw new Error(`Cannot create edge: target node "${toNode}" not found`);
     }
+    if (!this._hasPort(fromNode, fromPort, "out")) {
+      throw new Error(`Cannot create edge: source port "${fromPort}" not found on node "${fromNode}"`);
+    }
+    if (!this._hasPort(toNode, toPort, "in")) {
+      throw new Error(`Cannot create edge: target port "${toPort}" not found on node "${toNode}"`);
+    }
 
-    const e = new Edge({ fromNode, fromPort, toNode, toPort });
-    this.edges.set(e.id, e);
-    this.hooks?.emit("edge:create", e);
-    return e;
+    const edge = new Edge({ fromNode, fromPort, toNode, toPort });
+    this.edges.set(edge.id, edge);
+    this.hooks?.emit("edge:create", edge);
+    return edge;
   }
 
-  /**
-   * Clear all nodes and edges from the graph
-   */
   clear() {
     this.nodes.clear();
     this.edges.clear();
+    this._resetRuntimeState();
   }
 
   updateWorldTransforms() {
-    // 1. Find roots
     const roots = [];
-    for (const n of this.nodes.values()) {
-      if (!n.parent) roots.push(n);
+    for (const node of this.nodes.values()) {
+      if (!node.parent) roots.push(node);
     }
 
-    // 2. Traverse
-    const stack = roots.map((n) => ({ node: n, px: 0, py: 0 }));
+    const stack = roots.map((node) => ({ node, px: 0, py: 0 }));
     while (stack.length > 0) {
       const { node, px, py } = stack.pop();
       node.computed.x = px + node.pos.x;
@@ -137,25 +118,19 @@ export class Graph {
   reparent(node, newParent) {
     if (node.parent === newParent) return;
 
-    // 1. Calculate current world pos
     const wx = node.computed.x;
     const wy = node.computed.y;
 
-    // 2. Remove from old parent
     if (node.parent) {
       node.parent.children.delete(node);
     }
 
-    // 3. Add to new parent
     node.parent = newParent;
     if (newParent) {
       newParent.children.add(node);
-      // 4. Calculate new local pos
-      // world = parentWorld + local => local = world - parentWorld
       node.pos.x = wx - newParent.computed.x;
       node.pos.y = wy - newParent.computed.y;
     } else {
-      // Root
       node.pos.x = wx;
       node.pos.y = wy;
     }
@@ -163,23 +138,24 @@ export class Graph {
     this.updateWorldTransforms();
   }
 
-  // buffer helpers
   _curBuf() {
     return this._useAasCurrent ? this._valuesA : this._valuesB;
   }
+
   _nextBuf() {
     return this._useAasCurrent ? this._valuesB : this._valuesA;
   }
+
   swapBuffers() {
-    // when moving to next cycle, promote next->current and clear next
     this._useAasCurrent = !this._useAasCurrent;
     this._nextBuf().clear();
   }
-  // data helpers
+
   setOutput(nodeId, portId, value) {
     const key = `${nodeId}:${portId}`;
     this._nextBuf().set(key, value);
   }
+
   getInput(nodeId, portId) {
     for (const edge of this.edges.values()) {
       if (edge.toNode === nodeId && edge.toPort === portId) {
@@ -189,37 +165,228 @@ export class Graph {
     }
     return undefined;
   }
+
   toJSON() {
     const json = {
-      nodes: [...this.nodes.values()].map((n) => ({
-        id: n.id,
-        type: n.type,
-        title: n.title,
-        x: n.pos.x,
-        y: n.pos.y,
-        w: n.size.width,
-        h: n.size.height,
-        inputs: n.inputs,
-        outputs: n.outputs,
-        state: n.state,
-        parentId: n.parent?.id || null, // Save parent relationship
+      version: Graph.SCHEMA_VERSION,
+      meta: deepClone(this.meta),
+      nodes: [...this.nodes.values()].map((node) => ({
+        id: node.id,
+        type: node.type,
+        title: node.title,
+        x: node.pos.x,
+        y: node.pos.y,
+        w: node.size.width,
+        h: node.size.height,
+        inputs: deepClone(node.inputs),
+        outputs: deepClone(node.outputs),
+        state: deepClone(node.state),
+        parentId: node.parent?.id || null,
+        locked: node.locked || undefined,
+        description: node.description || undefined,
       })),
-      edges: [...this.edges.values()],
+      edges: [...this.edges.values()].map((edge) => ({
+        id: edge.id,
+        fromNode: edge.fromNode,
+        fromPort: edge.fromPort,
+        toNode: edge.toNode,
+        toPort: edge.toPort,
+        route: deepClone(edge.route) || undefined,
+        label: edge.label || undefined,
+      })),
     };
     this.hooks?.emit("graph:serialize", json);
     return json;
   }
 
-  fromJSON(json) {
+  fromJSON(rawJson, options = {}) {
+    const { preserveOnError = true } = options;
+    const previousSnapshot = preserveOnError ? this._snapshot() : null;
+
+    try {
+      const json = Graph._migrate(rawJson);
+      const normalized = this._normalizeGraphJSON(json);
+      this._applyNormalizedGraph(normalized);
+      const serialized = deepClone(this._snapshot());
+      this.hooks?.emit("graph:deserialize", serialized);
+      return this;
+    } catch (error) {
+      if (previousSnapshot) {
+        this._applyNormalizedGraph(previousSnapshot);
+      }
+      this.hooks?.emit?.("error", error);
+      throw error;
+    }
+  }
+
+  static _migrate(json) {
+    const data = typeof json === "string" ? JSON.parse(json) : deepClone(json);
+    const ver = data.version ?? 1;
+
+    if (ver < 2) {
+      data.meta = data.meta ?? { ...Graph.DEFAULT_META };
+      data.version = 2;
+    }
+
+    return data;
+  }
+
+  _snapshot() {
+    return this._normalizeGraphJSON({
+      version: Graph.SCHEMA_VERSION,
+      meta: deepClone(this.meta),
+      nodes: [...this.nodes.values()].map((node) => ({
+        id: node.id,
+        type: node.type,
+        title: node.title,
+        x: node.pos.x,
+        y: node.pos.y,
+        w: node.size.width,
+        h: node.size.height,
+        inputs: deepClone(node.inputs),
+        outputs: deepClone(node.outputs),
+        state: deepClone(node.state),
+        parentId: node.parent?.id || null,
+        locked: !!node.locked,
+        description: node.description || "",
+      })),
+      edges: [...this.edges.values()].map((edge) => ({
+        id: edge.id,
+        fromNode: edge.fromNode,
+        fromPort: edge.fromPort,
+        toNode: edge.toNode,
+        toPort: edge.toPort,
+        route: deepClone(edge.route),
+        label: edge.label,
+      })),
+    });
+  }
+
+  _normalizeGraphJSON(json) {
+    if (!json || typeof json !== "object") {
+      throw new Error("Graph JSON must be an object");
+    }
+    if (!Array.isArray(json.nodes)) {
+      throw new Error('Graph JSON must include a "nodes" array');
+    }
+    if (!Array.isArray(json.edges)) {
+      throw new Error('Graph JSON must include an "edges" array');
+    }
+
+    const normalized = {
+      version: Number.isFinite(json.version) ? json.version : Graph.SCHEMA_VERSION,
+      meta: { ...Graph.DEFAULT_META, ...(json.meta || {}) },
+      nodes: [],
+      edges: [],
+    };
+
+    const nodeIds = new Set();
+    const normalizedNodeMap = new Map();
+
+    for (const rawNode of json.nodes) {
+      if (!rawNode || typeof rawNode !== "object") {
+        throw new Error("Each node must be an object");
+      }
+      if (typeof rawNode.id !== "string" || !rawNode.id) {
+        throw new Error("Each node must have a non-empty string id");
+      }
+      if (nodeIds.has(rawNode.id)) {
+        throw new Error(`Duplicate node id "${rawNode.id}"`);
+      }
+      if (typeof rawNode.type !== "string" || !rawNode.type) {
+        throw new Error(`Node "${rawNode.id}" is missing a valid type`);
+      }
+
+      const def = this.registry?.types?.get(rawNode.type);
+      if (!def) {
+        throw new Error(`Unknown node type: "${rawNode.type}"`);
+      }
+
+      const normalizedNode = {
+        id: rawNode.id,
+        type: rawNode.type,
+        title: typeof rawNode.title === "string" && rawNode.title ? rawNode.title : def.title,
+        x: Number.isFinite(rawNode.x) ? rawNode.x : 0,
+        y: Number.isFinite(rawNode.y) ? rawNode.y : 0,
+        w: Number.isFinite(rawNode.w) ? rawNode.w : def.size?.w || 140,
+        h: Number.isFinite(rawNode.h) ? rawNode.h : this._calculateDefaultNodeHeight(def),
+        inputs: this._normalizePortList(rawNode.inputs, "in", rawNode.id, "inputs"),
+        outputs: this._normalizePortList(rawNode.outputs, "out", rawNode.id, "outputs"),
+        state: this._normalizeSerializableValue(rawNode.state, `node "${rawNode.id}" state`, {
+          fallback: {},
+        }),
+        parentId: rawNode.parentId == null ? null : String(rawNode.parentId),
+        locked: !!rawNode.locked,
+        description: typeof rawNode.description === "string" ? rawNode.description : "",
+      };
+
+      nodeIds.add(normalizedNode.id);
+      normalized.nodes.push(normalizedNode);
+      normalizedNodeMap.set(normalizedNode.id, normalizedNode);
+    }
+
+    for (const node of normalized.nodes) {
+      if (!node.parentId) continue;
+      if (!normalizedNodeMap.has(node.parentId)) {
+        throw new Error(`Node "${node.id}" references missing parent "${node.parentId}"`);
+      }
+      if (node.parentId === node.id) {
+        throw new Error(`Node "${node.id}" cannot be its own parent`);
+      }
+    }
+
+    const edgeIds = new Set();
+    for (const rawEdge of json.edges) {
+      if (!rawEdge || typeof rawEdge !== "object") {
+        throw new Error("Each edge must be an object");
+      }
+      if (typeof rawEdge.id !== "string" || !rawEdge.id) {
+        throw new Error("Each edge must have a non-empty string id");
+      }
+      if (edgeIds.has(rawEdge.id)) {
+        throw new Error(`Duplicate edge id "${rawEdge.id}"`);
+      }
+      const fromNode = normalizedNodeMap.get(rawEdge.fromNode);
+      const toNode = normalizedNodeMap.get(rawEdge.toNode);
+      if (!fromNode) {
+        throw new Error(`Edge "${rawEdge.id}" references missing source node "${rawEdge.fromNode}"`);
+      }
+      if (!toNode) {
+        throw new Error(`Edge "${rawEdge.id}" references missing target node "${rawEdge.toNode}"`);
+      }
+      if (!fromNode.outputs.some((port) => port.id === rawEdge.fromPort)) {
+        throw new Error(`Edge "${rawEdge.id}" references missing source port "${rawEdge.fromPort}"`);
+      }
+      if (!toNode.inputs.some((port) => port.id === rawEdge.toPort)) {
+        throw new Error(`Edge "${rawEdge.id}" references missing target port "${rawEdge.toPort}"`);
+      }
+
+      normalized.edges.push({
+        id: rawEdge.id,
+        fromNode: rawEdge.fromNode,
+        fromPort: rawEdge.fromPort,
+        toNode: rawEdge.toNode,
+        toPort: rawEdge.toPort,
+        route: this._normalizeSerializableValue(rawEdge.route, `edge "${rawEdge.id}" route`, {
+          allowNull: true,
+          plainObjectOnly: true,
+        }),
+        label: rawEdge.label == null ? null : String(rawEdge.label),
+      });
+      edgeIds.add(rawEdge.id);
+    }
+
+    return normalized;
+  }
+
+  _applyNormalizedGraph(normalized) {
     this.nodes.clear();
     this.edges.clear();
+    this._resetRuntimeState();
+    this.meta = { ...Graph.DEFAULT_META, ...(normalized.meta || {}) };
 
-    // Restore nodes first
-    for (const nd of json.nodes) {
+    for (const nd of normalized.nodes) {
       const def = this.registry?.types?.get(nd.type);
-      const minH = def ? this._calculateDefaultNodeHeight(def) : 60;
-      const height = nd.h !== undefined ? nd.h : minH;
-
       const node = new Node({
         id: nd.id,
         type: nd.type,
@@ -227,45 +394,94 @@ export class Graph {
         x: nd.x,
         y: nd.y,
         width: nd.w,
-        height: height,
+        height: nd.h,
       });
 
-      // Call onCreate to initialize node with defaults first
-      if (def?.onCreate) {
-        def.onCreate(node);
-      }
-
-      node.inputs = nd.inputs;
-      node.outputs = nd.outputs;
-      // Merge loaded state over defaults
-      node.state = { ...node.state, ...(nd.state || {}) };
-
+      def?.onCreate?.(node);
+      node.inputs = deepClone(nd.inputs);
+      node.outputs = deepClone(nd.outputs);
+      node.state = { ...node.state, ...deepClone(nd.state || {}) };
+      node.locked = !!nd.locked;
+      node.description = nd.description || "";
       this.nodes.set(node.id, node);
     }
 
-    // Restore parent-child relationships
-    for (const nd of json.nodes) {
-      if (nd.parentId) {
-        const node = this.nodes.get(nd.id);
-        const parent = this.nodes.get(nd.parentId);
-        if (node && parent) {
-          node.parent = parent;
-          parent.children.add(node);
-        }
+    for (const nd of normalized.nodes) {
+      if (!nd.parentId) continue;
+      const node = this.nodes.get(nd.id);
+      const parent = this.nodes.get(nd.parentId);
+      if (node && parent) {
+        node.parent = parent;
+        parent.children.add(node);
       }
     }
 
-    // Restore edges
-    for (const ed of json.edges) {
-      this.edges.set(ed.id, new Edge(ed));
+    for (const ed of normalized.edges) {
+      this.edges.set(ed.id, new Edge({ ...ed, route: deepClone(ed.route) }));
     }
 
-    // Update world transforms to calculate proper positions
     this.updateWorldTransforms();
+  }
 
-    this.hooks?.emit("graph:deserialize", json);
+  _normalizePortList(list, expectedDir, nodeId, label) {
+    if (!Array.isArray(list)) {
+      throw new Error(`Node "${nodeId}" must provide a valid ${label} array`);
+    }
+    const ids = new Set();
+    return list.map((port, index) => {
+      if (!port || typeof port !== "object") {
+        throw new Error(`Node "${nodeId}" ${label}[${index}] must be an object`);
+      }
+      if (typeof port.id !== "string" || !port.id) {
+        throw new Error(`Node "${nodeId}" ${label}[${index}] is missing a valid id`);
+      }
+      if (ids.has(port.id)) {
+        throw new Error(`Node "${nodeId}" has duplicate port id "${port.id}"`);
+      }
+      ids.add(port.id);
 
-    return this;
+      const portType = port.portType === "exec" ? "exec" : "data";
+      const name = typeof port.name === "string" ? port.name : "";
+      if (portType === "data" && !name) {
+        throw new Error(`Node "${nodeId}" data port "${port.id}" must have a non-empty name`);
+      }
+
+      return {
+        id: port.id,
+        name,
+        datatype: typeof port.datatype === "string" && port.datatype ? port.datatype : "any",
+        portType,
+        dir: expectedDir,
+      };
+    });
+  }
+
+  _normalizeSerializableValue(value, label, { allowNull = false, plainObjectOnly = false, fallback = null } = {}) {
+    if (value == null) {
+      if (allowNull) return null;
+      return deepClone(fallback);
+    }
+    if (plainObjectOnly && (typeof value !== "object" || Array.isArray(value))) {
+      throw new Error(`${label} must be a plain object`);
+    }
+    try {
+      return deepClone(value);
+    } catch {
+      throw new Error(`${label} must be JSON-serializable`);
+    }
+  }
+
+  _hasPort(nodeId, portId, dir) {
+    const node = this.nodes.get(nodeId);
+    if (!node) return false;
+    const ports = dir === "out" ? node.outputs : node.inputs;
+    return ports.some((port) => port.id === portId);
+  }
+
+  _resetRuntimeState() {
+    this._valuesA.clear();
+    this._valuesB.clear();
+    this._useAasCurrent = true;
   }
 
   _calculateDefaultNodeHeight(def) {
@@ -276,16 +492,12 @@ export class Graph {
     const portSpacing = 20;
 
     if (def.html) {
-      // For HTML overlay nodes: reserve space for content BELOW all port rows.
-      // Port idx N bottom: headerHeight + 8 + N*portSpacing + portSpacing/2 + 6
-      //                  = 50 + N*portSpacing (for N=0: 50, N=1: 70, ...)
-      // Add ~50px for HTML content + bottom padding.
       const lastPortBottom = maxPorts > 0 ? 50 + (maxPorts - 1) * portSpacing : 26;
       return Math.max(lastPortBottom + 50, 90);
     }
 
     const padding = 8;
-    let h = headerHeight + padding + (maxPorts * portSpacing) + padding;
-    return Math.max(h, 40);
+    const height = headerHeight + padding + maxPorts * portSpacing + padding;
+    return Math.max(height, 40);
   }
 }

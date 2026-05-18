@@ -104,8 +104,13 @@ export class Runner {
       this._executeNodeWithCache(currentNodeId, dt, runCache);
 
       // Find exec output edges and enqueue next nodes
+      // Conditional exec: if setOutput was called for an exec port, only follow when truthy
       const execOutputPorts = node.outputs.filter((p) => p.portType === "exec");
       for (const execOutput of execOutputPorts) {
+        const execKey = `${currentNodeId}:${execOutput.id}`;
+        const execVal = runCache.get(execKey);
+        // If a value was explicitly written, respect it; absent = always fire
+        if (runCache.has(execKey) && !execVal) continue;
         for (const edge of this.graph.edges.values()) {
           if (edge.fromNode === currentNodeId && edge.fromPort === execOutput.id) {
             queue.push({ nodeId: edge.toNode, fromEdgeId: edge.id });
@@ -243,31 +248,41 @@ export class Runner {
     const def = this.registry.types.get(node.type);
     if (!def?.onExecute) return;
 
+    const ctx = {
+      dt,
+      graph: this.graph,
+      getInput: (portName) => {
+        const p = node.inputs.find((i) => i.name === portName) || node.inputs[0];
+        if (!p) return undefined;
+        for (const edge of this.graph.edges.values()) {
+          if (edge.toNode === nodeId && edge.toPort === p.id) {
+            const key = `${edge.fromNode}:${edge.fromPort}`;
+            return runCache.has(key) ? runCache.get(key) : this.graph._curBuf().get(key);
+          }
+        }
+        return undefined;
+      },
+      setOutput: (portName, value) => {
+        const p = node.outputs.find((o) => o.name === portName) || node.outputs[0];
+        if (p) runCache.set(`${node.id}:${p.id}`, value);
+      },
+    };
+
     try {
-      def.onExecute(node, {
-        dt,
-        graph: this.graph,
-        getInput: (portName) => {
-          const p = node.inputs.find((i) => i.name === portName) || node.inputs[0];
-          if (!p) return undefined;
-          for (const edge of this.graph.edges.values()) {
-            if (edge.toNode === nodeId && edge.toPort === p.id) {
-              const key = `${edge.fromNode}:${edge.fromPort}`;
-              // Check run-local cache first, then fall back to graph buffer
-              return runCache.has(key) ? runCache.get(key) : this.graph._curBuf().get(key);
-            }
-          }
-          return undefined;
-        },
-        setOutput: (portName, value) => {
-          const p = node.outputs.find((o) => o.name === portName) || node.outputs[0];
-          if (p) {
-            runCache.set(`${node.id}:${p.id}`, value);
-          }
-        },
-      });
+      const result = def.onExecute(node, ctx);
+      if (result instanceof Promise) {
+        result
+          .then(() => { node._execError = null; })
+          .catch((err) => {
+            node._execError = { message: err.message, timestamp: Date.now() };
+            this.hooks?.emit?.("error", { node, error: err });
+          });
+      } else {
+        node._execError = null;
+      }
     } catch (err) {
-      this.hooks?.emit?.("error", err);
+      node._execError = { message: err.message, timestamp: Date.now() };
+      this.hooks?.emit?.("error", { node, error: err });
     }
   }
 

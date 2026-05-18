@@ -21,12 +21,14 @@ import { registerLogicNodes } from "./logic.js";
 import { registerValueNodes } from "./value.js";
 import { registerUtilNodes } from "./util.js";
 import { registerCoreNodes } from "./core.js";
+import { registerSubGraphNodes } from "./subgraph.js";
 
 export { registerMathNodes } from "./math.js";
 export { registerLogicNodes } from "./logic.js";
 export { registerValueNodes } from "./value.js";
 export { registerUtilNodes } from "./util.js";
 export { registerCoreNodes } from "./core.js";
+export { registerSubGraphNodes } from "./subgraph.js";
 
 /**
  * Register all example nodes at once
@@ -39,4 +41,5 @@ export function registerAllNodes(registry, hooks) {
     registerValueNodes(registry);
     registerUtilNodes(registry);
     registerCoreNodes(registry, hooks);
+    registerSubGraphNodes(registry);
 }
