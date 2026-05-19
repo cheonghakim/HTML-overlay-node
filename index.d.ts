@@ -106,7 +106,7 @@ export interface NodeHtmlParts {
 
 // ─── Property panel widget system ─────────────────────────────────────────────
 
-export type WidgetType = "text" | "number" | "slider" | "toggle" | "select" | "color" | "textarea";
+export type WidgetType = "text" | "number" | "slider" | "toggle" | "select" | "radio" | "checkbox-group" | "color" | "textarea";
 
 export interface SelectOption {
   label: string;

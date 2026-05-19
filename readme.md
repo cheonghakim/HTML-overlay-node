@@ -349,6 +349,8 @@ editor.registry.register("audio/Gain", {
 | `"slider"` | 슬라이더 (실시간 드래그) | `min`, `max`, `step` |
 | `"toggle"` | 토글 스위치 | — |
 | `"select"` | 드롭다운 | `options: string[] \| { label, value }[]` |
+| `"radio"` | 라디오 버튼 (단일 선택) | `options: string[] \| { label, value }[]` |
+| `"checkbox-group"` | 체크박스 그룹 (복수 선택, 배열 저장) | `options: string[] \| { label, value }[]` |
 | `"color"` | 컬러 피커 | — |
 | `"textarea"` | 여러 줄 텍스트 | `placeholder` |
 

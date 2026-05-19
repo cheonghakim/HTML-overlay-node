@@ -23,7 +23,7 @@ const _allPanels = new Set();
  *     ],
  *   });
  *
- * Supported widget types: text, number, slider, toggle, select, color, textarea
+ * Supported widget types: text, number, slider, toggle, select, radio, checkbox-group, color, textarea
  *
  * onChange(node, value, ctx) — called on committed change (undo-safe by default).
  *   ctx = { controller, graph, immediate }
@@ -137,12 +137,12 @@ export class PropertyPanel {
 
     const content = this.panel.querySelector('.panel-content');
     content.innerHTML = `
+      ${this._renderStateSection(node)}
       ${this._renderBasicInfo(node)}
       ${this._renderPositionSize(node)}
       ${this._renderConnections(node)}
       ${this._renderPorts(node)}
       ${this._renderLiveValues(node)}
-      ${this._renderStateSection(node)}
       <div class="panel-actions">
         <button class="btn-secondary panel-close-btn">Close</button>
       </div>
@@ -295,6 +295,42 @@ export class PropertyPanel {
         break;
       }
 
+      case 'radio': {
+        const rOpts = options ?? [];
+        const rVal = String(value ?? '');
+        const rItems = rOpts.map((opt, i) => {
+          const v = typeof opt === 'object' ? opt.value : opt;
+          const l = typeof opt === 'object' ? opt.label : opt;
+          const checked = String(v) === rVal;
+          return `<label class="prop-radio-item">
+            <input type="radio" name="prop-radio-${key}" value="${_esc(String(v))}"
+              ${checked ? 'checked' : ''} ${ro ? 'disabled' : ''} />
+            <span class="prop-radio-mark"></span>
+            <span class="prop-radio-text">${_esc(l)}</span>
+          </label>`;
+        }).join('');
+        input = `<div class="prop-radio-group" data-prop-key="${key}" data-prop-widget="radio">${rItems}</div>`;
+        break;
+      }
+
+      case 'checkbox-group': {
+        const cgOpts = options ?? [];
+        const cgVal = Array.isArray(value) ? value.map(String) : [];
+        const cgItems = cgOpts.map((opt, i) => {
+          const v = typeof opt === 'object' ? opt.value : opt;
+          const l = typeof opt === 'object' ? opt.label : opt;
+          const checked = cgVal.includes(String(v));
+          return `<label class="prop-checkbox-item">
+            <input type="checkbox" value="${_esc(String(v))}"
+              ${checked ? 'checked' : ''} ${ro ? 'disabled' : ''} />
+            <span class="prop-checkbox-mark"></span>
+            <span class="prop-checkbox-text">${_esc(l)}</span>
+          </label>`;
+        }).join('');
+        input = `<div class="prop-checkbox-group" data-prop-key="${key}" data-prop-widget="checkbox-group">${cgItems}</div>`;
+        break;
+      }
+
       case 'color':
         input = `<input type="color" data-prop-key="${key}"
           value="${value ?? '#000000'}" ${ro ? 'disabled' : ''} />`;
@@ -356,6 +392,12 @@ export class PropertyPanel {
       // Custom select: read from the selected item's data-value
       return el.querySelector('.prop-select-item.selected')?.dataset.value ?? '';
     }
+    if (widget === 'radio') {
+      return el.querySelector('input[type="radio"]:checked')?.value ?? '';
+    }
+    if (widget === 'checkbox-group') {
+      return [...el.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.value);
+    }
     if (el.type === 'number' || el.type === 'range') return parseFloat(el.value);
     return el.value;
   }
@@ -372,6 +414,16 @@ export class PropertyPanel {
       const label = el.querySelector('.prop-select-item.selected')?.textContent ?? str;
       const labelEl = el.querySelector('.prop-select-label');
       if (labelEl) labelEl.textContent = label;
+      return;
+    }
+    if (widget === 'radio') {
+      const str = String(value ?? '');
+      el.querySelectorAll('input[type="radio"]').forEach(r => { r.checked = r.value === str; });
+      return;
+    }
+    if (widget === 'checkbox-group') {
+      const arr = Array.isArray(value) ? value.map(String) : [];
+      el.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = arr.includes(cb.value); });
       return;
     }
     if (el.tagName === 'TEXTAREA') { el.value = String(value ?? ''); return; }
