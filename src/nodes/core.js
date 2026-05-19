@@ -192,7 +192,7 @@ export function registerCoreNodes(registry, hooks) {
         },
         onCreate(node) {
             node.state.todos = [
-                { id: 1, text: "Welcome to Free Node", done: false },
+                { id: 1, text: "Welcome to html-overlay-node", done: false },
                 { id: 2, text: "Try adding a task", done: true },
             ];
         },

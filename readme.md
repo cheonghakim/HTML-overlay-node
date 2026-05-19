@@ -1,36 +1,36 @@
-# Free Node — HTML Overlay Node Editor
+# html-overlay-node
 
 [![npm version](https://img.shields.io/npm/v/html-overlay-node.svg)](https://www.npmjs.com/package/html-overlay-node)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**Free Node** is an enterprise-grade visual node editor that combines Canvas performance with the full power of HTML/CSS for node UI.
+**html-overlay-node** is an enterprise-grade visual node editor that combines Canvas performance with the full power of HTML/CSS for node UI.
 
-**Free Node**는 Canvas의 고성능 렌더링과 HTML/CSS의 완전한 UI 표현력을 결합한 엔터프라이즈급 비주얼 노드 에디터입니다.
+**html-overlay-node**는 Canvas의 고성능 렌더링과 HTML/CSS의 완전한 UI 표현력을 결합한 엔터프라이즈급 비주얼 노드 에디터입니다.
 
 > **Live Demo** · **[https://cheonghakim.github.io/HTML-overlay-node/](https://cheonghakim.github.io/HTML-overlay-node/)**
 
 ---
 
-## Why Free Node?
+## Why html-overlay-node?
 
 Traditional node editors force a hard choice:
 
 - **Pure Canvas** — High performance, but extremely difficult to style or build rich interactive widgets.
 - **Pure DOM** — Easy to style, but performance collapses under complex edge animations or large graphs.
 
-**Free Node's hybrid architecture**:
+**html-overlay-node's hybrid architecture**:
 
 - **Canvas layer** handles heavy lifting: thousands of edges, animated signal flow, background grid, minimap.
 - **HTML overlay** handles UI: node bodies with inputs, sliders, buttons, dropdowns — all with full CSS power.
 
-### 왜 Free Node인가?
+### 왜 html-overlay-node인가?
 
 기존 노드 에디터는 두 가지 선택지 사이에서 타협합니다:
 
 - **순수 Canvas** — 성능은 좋지만 CSS 스타일링 불가, 인터랙티브 위젯 구현이 매우 어렵습니다.
 - **순수 DOM** — 스타일링은 쉽지만 복잡한 그래프에서 성능이 급격히 저하됩니다.
 
-**Free Node의 하이브리드 아키텍처**:
+**html-overlay-node의 하이브리드 아키텍처**:
 
 - **Canvas**가 무거운 작업을 담당: 수천 개의 연결선, 에메랄드 신호 애니메이션, 배경 그리드, 미니맵
 - **HTML 오버레이**가 UI를 담당: 입력 폼, 슬라이더, 버튼 등 모든 CSS 위젯

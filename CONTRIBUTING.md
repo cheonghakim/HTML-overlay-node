@@ -1,6 +1,6 @@
-# Contributing to Free Node
+# Contributing to html-overlay-node
 
-Thank you for your interest in contributing to Free Node! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to html-overlay-node! This document provides guidelines and instructions for contributing.
 
 ## Getting Started
 
