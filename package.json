@@ -1,6 +1,6 @@
 {
   "name": "html-overlay-node",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Zero-dependency visual node editor — Canvas rendering + HTML/CSS widget overlay. Data-flow graphs, workflow editors, visual scripting. Undo/redo, minimap, sub-graphs, TypeScript support.",
   "main": "./dist/html-overlay-node.umd.js",
   "module": "./dist/html-overlay-node.es.js",
