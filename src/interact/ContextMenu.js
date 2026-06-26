@@ -120,7 +120,7 @@ export class ContextMenu {
 
     // Clean up any open submenus
     const allSubmenus = document.querySelectorAll(".context-submenu");
-    allSubmenus.forEach(submenu => submenu.remove());
+    allSubmenus.forEach((submenu) => submenu.remove());
 
     this.menuElement.style.display = "none";
     document.removeEventListener("click", this._onDocumentClick);
@@ -144,20 +144,21 @@ export class ContextMenu {
     const menu = document.createElement("div");
     menu.className = "html-overlay-node-context-menu";
 
-    // Styling
     Object.assign(menu.style, {
       position: "fixed",
       display: "none",
-      minWidth: "180px",
-      backgroundColor: "#2a2a2e",
-      border: "1px solid #444",
-      borderRadius: "6px",
-      boxShadow: "0 4px 16px rgba(0, 0, 0, 0.4)",
+      minWidth: "168px",
+      backgroundColor: "rgba(16, 16, 26, 0.97)",
+      backdropFilter: "blur(20px) saturate(180%)",
+      border: "1px solid rgba(255,255,255,0.09)",
+      borderRadius: "4px",
+      boxShadow:
+        "0 8px 32px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.04) inset",
       zIndex: "10000",
-      padding: "4px 0",
-      fontFamily: "system-ui, -apple-system, sans-serif",
-      fontSize: "13px",
-      color: "#e9e9ef",
+      padding: "5px",
+      fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
+      fontSize: "12px",
+      color: "#d8d8ee",
     });
 
     document.body.appendChild(menu);
@@ -213,16 +214,19 @@ export class ContextMenu {
       itemEl.appendChild(contentWrapper);
 
       Object.assign(itemEl.style, {
-        padding: "4px 8px",
+        padding: "6px 10px",
         cursor: "pointer",
-        transition: "background-color 0.15s ease",
+        transition: "background-color 0.1s ease",
         userSelect: "none",
         position: "relative",
+        borderRadius: "5px",
+        display: "flex",
+        alignItems: "center",
       });
 
       // Hover effect
       itemEl.addEventListener("mouseenter", () => {
-        itemEl.style.backgroundColor = "#3a3a3e";
+        itemEl.style.backgroundColor = "rgba(255,255,255,0.07)";
 
         // Clear any pending hide timeout
         if (itemEl._hideTimeout) {
@@ -233,15 +237,13 @@ export class ContextMenu {
         // Show submenu if exists
         if (item.submenu) {
           // Support function-based submenus for dynamic content
-          const submenuItems = typeof item.submenu === 'function'
-            ? item.submenu()
-            : item.submenu;
+          const submenuItems = typeof item.submenu === "function" ? item.submenu() : item.submenu;
           this._showSubmenu(submenuItems, itemEl);
         }
       });
 
       itemEl.addEventListener("mouseleave", (e) => {
-        itemEl.style.backgroundColor = "transparent";
+        itemEl.style.backgroundColor = "rgba(0,0,0,0)";
 
         // Hide submenu with delay if moving to submenu
         if (item.submenu) {
@@ -283,16 +285,18 @@ export class ContextMenu {
 
     Object.assign(submenuEl.style, {
       position: "fixed",
-      minWidth: "140px",
-      backgroundColor: "#2a2a2e",
-      border: "1px solid #444",
-      borderRadius: "6px",
-      boxShadow: "0 4px 16px rgba(0, 0, 0, 0.4)",
+      minWidth: "148px",
+      backgroundColor: "rgba(16, 16, 26, 0.97)",
+      backdropFilter: "blur(20px) saturate(180%)",
+      border: "1px solid rgba(255,255,255,0.09)",
+      borderRadius: "4px",
+      boxShadow:
+        "0 8px 32px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.04) inset",
       zIndex: "10001",
-      padding: "4px 0",
-      fontFamily: "system-ui, -apple-system, sans-serif",
-      fontSize: "13px",
-      color: "#e9e9ef",
+      padding: "5px",
+      fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
+      fontSize: "12px",
+      color: "#d8d8ee",
     });
 
     submenuItems.forEach((subItem) => {
@@ -328,18 +332,21 @@ export class ContextMenu {
       subItemEl.appendChild(contentWrapper);
 
       Object.assign(subItemEl.style, {
-        padding: "4px 8px",
+        padding: "6px 10px",
         cursor: "pointer",
-        transition: "background-color 0.15s ease",
+        transition: "background-color 0.1s ease",
         userSelect: "none",
+        borderRadius: "5px",
+        display: "flex",
+        alignItems: "center",
       });
 
       subItemEl.addEventListener("mouseenter", () => {
-        subItemEl.style.backgroundColor = "#3a3a3e";
+        subItemEl.style.backgroundColor = "rgba(255,255,255,0.07)";
       });
 
       subItemEl.addEventListener("mouseleave", () => {
-        subItemEl.style.backgroundColor = "transparent";
+        subItemEl.style.backgroundColor = "rgba(0,0,0,0)";
       });
 
       subItemEl.addEventListener("click", (e) => {

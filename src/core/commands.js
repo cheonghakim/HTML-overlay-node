@@ -59,11 +59,33 @@ function dataTypeOf(graph, nodeId, portId, dir) {
   return list.find(p => p.id === portId)?.datatype ?? "any";
 }
 
+function hasPath(graph, startNodeId, targetNodeId, visited = new Set()) {
+  if (startNodeId === targetNodeId) return true;
+  visited.add(startNodeId);
+  
+  for (const edge of graph.edges.values()) {
+    if (edge.fromNode === startNodeId) {
+      const nextNodeId = edge.toNode;
+      if (!visited.has(nextNodeId)) {
+        if (hasPath(graph, nextNodeId, targetNodeId, visited)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Check whether two ports can be connected.
  * Returns { ok: boolean, reason?: string }
  */
 export function checkPortCompatibility(graph, fromNode, fromPort, toNode, toPort) {
+  // Prevent cycle/circular reference
+  if (hasPath(graph, toNode, fromNode)) {
+    return { ok: false, reason: "Cyclic connection detected (Loops not allowed)" };
+  }
+
   const fromPT = portTypeOf(graph, fromNode, fromPort, "out");
   const toPT   = portTypeOf(graph, toNode,   toPort,  "in");
   if (fromPT && toPT && fromPT !== toPT) {

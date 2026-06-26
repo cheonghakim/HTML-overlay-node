@@ -61,6 +61,7 @@ export class Runner {
     const executedNodes = [];
     const allConnectedNodes = new Set();
     const execEdgeOrder = []; // exec edge IDs in traversal order
+    const rawSteps = []; // array of { nodeId, edgeId }
 
     // Local output cache: nodeId:portId → value
     // Ensures outputs written by executeNode are immediately readable by subsequent nodes
@@ -91,9 +92,13 @@ export class Runner {
           for (const edge of this.graph.edges.values()) {
             if (edge.toNode === currentNodeId && edge.toPort === input.id) {
               const sourceNode = this.graph.nodes.get(edge.fromNode);
-              if (sourceNode && !allConnectedNodes.has(edge.fromNode)) {
-                allConnectedNodes.add(edge.fromNode);
-                this._executeNodeWithCache(edge.fromNode, dt, runCache);
+              if (sourceNode) {
+                if (!allConnectedNodes.has(edge.fromNode)) {
+                  allConnectedNodes.add(edge.fromNode);
+                  this._executeNodeWithCache(edge.fromNode, dt, runCache);
+                  rawSteps.push({ nodeId: edge.fromNode, edgeId: null });
+                }
+                rawSteps.push({ nodeId: currentNodeId, edgeId: edge.id });
               }
             }
           }
@@ -102,6 +107,7 @@ export class Runner {
 
       // Execute this node
       this._executeNodeWithCache(currentNodeId, dt, runCache);
+      rawSteps.push({ nodeId: currentNodeId, edgeId: fromEdgeId });
 
       // Find exec output edges and enqueue next nodes
       // Conditional exec: if setOutput was called for an exec port, only follow when truthy
@@ -127,7 +133,19 @@ export class Runner {
       }
     }
 
-    return { connectedNodes: allConnectedNodes, connectedEdges, execEdgeOrder };
+    // Filter redundant steps (node-only step when there's an edge step for it)
+    const hasEdgeStep = new Set();
+    for (const step of rawSteps) {
+      if (step.edgeId) hasEdgeStep.add(step.nodeId);
+    }
+    const executionSteps = rawSteps.filter((step) => {
+      if (step.edgeId === null && hasEdgeStep.has(step.nodeId)) {
+        return false;
+      }
+      return true;
+    });
+
+    return { connectedNodes: allConnectedNodes, connectedEdges, execEdgeOrder, executionSteps };
   }
 
   setExecutionMode(mode) {

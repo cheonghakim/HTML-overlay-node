@@ -39,17 +39,12 @@ export class Minimap {
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
 
-            // Map minimap coordinates back to world coordinates
             const worldX = (mx - this.lastOffsetX) / this.lastScale + this.lastMinX;
             const worldY = (my - this.lastOffsetY) / this.lastScale + this.lastMinY;
 
-            // Center the renderer at this world position
-            const vw = this.renderer.canvas.width / this.renderer.scale;
-            const vh = this.renderer.canvas.height / this.renderer.scale;
-
             this.renderer.setTransform({
-                offsetX: -worldX * this.renderer.scale + this.renderer.canvas.width / 2,
-                offsetY: -worldY * this.renderer.scale + this.renderer.canvas.height / 2
+                offsetX: -worldX * this.renderer.scale + this.renderer.width / 2,
+                offsetY: -worldY * this.renderer.scale + this.renderer.height / 2,
             });
         };
 
@@ -59,14 +54,11 @@ export class Minimap {
             this.canvas.style.cursor = "grabbing";
         });
 
-        window.addEventListener("mousemove", (e) => {
-            if (isDragging) handleInteraction(e);
-        });
-
-        window.addEventListener("mouseup", () => {
-            isDragging = false;
-            this.canvas.style.cursor = "crosshair";
-        });
+        // Store refs so destroy() can remove them
+        this._onWindowMouseMove = (e) => { if (isDragging) handleInteraction(e); };
+        this._onWindowMouseUp   = () => { isDragging = false; this.canvas.style.cursor = "crosshair"; };
+        window.addEventListener("mousemove", this._onWindowMouseMove);
+        window.addEventListener("mouseup",   this._onWindowMouseUp);
     }
 
     /**
@@ -173,8 +165,8 @@ export class Minimap {
         // Draw viewport rectangle
         const vx0 = -renderer.offsetX / renderer.scale;
         const vy0 = -renderer.offsetY / renderer.scale;
-        const vw = renderer.canvas.width / renderer.scale;
-        const vh = renderer.canvas.height / renderer.scale;
+        const vw = renderer.width  / renderer.scale;
+        const vh = renderer.height / renderer.scale;
 
         const vmx = (vx0 - minX) * scale + offsetX;
         const vmy = (vy0 - minY) * scale + offsetY;
@@ -194,6 +186,8 @@ export class Minimap {
      * Cleanup
      */
     destroy() {
+        window.removeEventListener("mousemove", this._onWindowMouseMove);
+        window.removeEventListener("mouseup",   this._onWindowMouseUp);
         if (this.canvas.parentElement) {
             this.canvas.parentElement.removeChild(this.canvas);
         }

@@ -51,6 +51,34 @@ export class IconManager {
       },
     });
 
+    // util/SubGraph — mini graph network icon (three connected nodes)
+    this.register('subgraph', {
+      tooltip: '서브 그래프',
+      draw(ctx, cx, cy, s) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 0.9;
+        const pts = [
+          { x: cx - s * 0.3, y: cy + s * 0.2 },
+          { x: cx + s * 0.3, y: cy + s * 0.2 },
+          { x: cx,           y: cy - s * 0.22 },
+        ];
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[2].x, pts[2].y);
+        ctx.moveTo(pts[1].x, pts[1].y); ctx.lineTo(pts[2].x, pts[2].y);
+        ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y);
+        ctx.stroke();
+        const r = s * 0.1;
+        for (const p of pts) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      },
+    });
+
     this.register('arrow-right', {
       draw(ctx, cx, cy, s) {
         ctx.save();

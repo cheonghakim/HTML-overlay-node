@@ -149,14 +149,78 @@ export class SubGraphPanel {
     const divider = document.createElement('span');
     Object.assign(divider.style, { width: '1px', height: '14px', background: 'rgba(255,255,255,0.1)', flexShrink: '0' });
 
+    // ── utility buttons ───────────────────────────────────────────
+    const utilGroup = document.createElement('div');
+    Object.assign(utilGroup.style, { display: 'flex', gap: '1px', alignItems: 'center' });
+
+    // helper: make SVG icon button
+    const makeSvgBtn = (svgPath, tooltip) => {
+      const b = this._makeIconButton('', tooltip);
+      b.innerHTML = `<span style="width:11px;height:11px;display:flex;align-items:center;pointer-events:none;color:inherit">${svgPath}</span>`;
+      Object.assign(b.style, { width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0' });
+      return b;
+    };
+
+    // Fit-to-view button
+    const fitBtn = makeSvgBtn(
+      `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" style="width:11px;height:11px"><path d="M1 4V1h3M8 1h3v3M11 8v3H8M4 11H1V8"/></svg>`,
+      '뷰에 맞추기 (F)'
+    );
+    fitBtn.addEventListener('click', () => this._controller?.fitToView());
+    utilGroup.appendChild(fitBtn);
+
+    // Grid arrange button
+    const gridBtn = makeSvgBtn(
+      `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" style="width:11px;height:11px"><rect x="1" y="1" width="4" height="4" rx="0.5"/><rect x="7" y="1" width="4" height="4" rx="0.5"/><rect x="1" y="7" width="4" height="4" rx="0.5"/><rect x="7" y="7" width="4" height="4" rx="0.5"/></svg>`,
+      '그리드 정렬'
+    );
+    gridBtn.addEventListener('click', () => this._arrangeGrid());
+    utilGroup.appendChild(gridBtn);
+
+    const divider2 = document.createElement('span');
+    Object.assign(divider2.style, { width: '1px', height: '14px', background: 'rgba(255,255,255,0.1)', flexShrink: '0', margin: '0 2px' });
+    utilGroup.appendChild(divider2);
+
+    // Slot layout toggle (H/V)
+    const slotHBtn = makeSvgBtn(
+      `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" style="width:11px;height:11px"><rect x="1" y="3" width="10" height="6" rx="1"/><line x1="4" y1="3" x2="4" y2="9"/><line x1="8" y1="3" x2="8" y2="9"/></svg>`,
+      '슬롯 좌/우 배치'
+    );
+    slotHBtn.addEventListener('click', () => this._setSlotLayout('horizontal'));
+    utilGroup.appendChild(slotHBtn);
+
+    const slotVBtn = makeSvgBtn(
+      `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" style="width:11px;height:11px"><rect x="3" y="1" width="6" height="10" rx="1"/><line x1="3" y1="4" x2="9" y2="4"/><line x1="3" y1="8" x2="9" y2="8"/></svg>`,
+      '슬롯 상/하 배치'
+    );
+    slotVBtn.addEventListener('click', () => this._setSlotLayout('vertical'));
+    utilGroup.appendChild(slotVBtn);
+
+    this._slotHBtn = slotHBtn;
+    this._slotVBtn = slotVBtn;
+
+    const divider3 = document.createElement('span');
+    Object.assign(divider3.style, { width: '1px', height: '14px', background: 'rgba(255,255,255,0.1)', flexShrink: '0' });
+
+    // Open / focus parent SubGraph node in main graph
+    const openParentBtn = makeSvgBtn(
+      `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" style="width:11px;height:11px"><path d="M2 6h8M7 3l3 3-3 3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      '메인 그래프에서 노드 포커스'
+    );
+    openParentBtn.addEventListener('click', () => this._openParentNode());
+    this._openParentBtn = openParentBtn;
+
     // close button
     const closeBtn = this._makeIconButton('✕', 'Close sub-graph panel');
     closeBtn.style.fontSize = '11px';
     closeBtn.addEventListener('click', () => this.close());
 
     header.appendChild(breadcrumb);
+    header.appendChild(utilGroup);
     header.appendChild(dockGroup);
     header.appendChild(divider);
+    header.appendChild(openParentBtn);
+    header.appendChild(divider3);
     header.appendChild(closeBtn);
 
     // ── canvas area ───────────────────────────────────────────────
@@ -249,6 +313,59 @@ export class SubGraphPanel {
     }
     this._dockBtns = sides;
     return wrap;
+  }
+
+  // ─── Utility actions ───────────────────────────────────────────────────────
+
+  _setSlotLayout(mode) {
+    if (this._controller) {
+      this._controller.slotLayout = mode;
+      this._controller.render();
+    }
+    // Sync to main graph too
+    this.parentController?.setSlotLayout(mode);
+    // Update button highlight
+    if (this._slotHBtn) this._slotHBtn.style.background = mode === 'horizontal' ? 'rgba(99,179,237,0.2)' : 'none';
+    if (this._slotVBtn) this._slotVBtn.style.background = mode === 'vertical'   ? 'rgba(99,179,237,0.2)' : 'none';
+  }
+
+  _arrangeGrid(colsHint = 4, gapX = 60, gapY = 40) {
+    if (!this._graph || !this._controller) return;
+    const nodes = [...this._graph.nodes.values()];
+    if (nodes.length === 0) return;
+
+    // Estimate max node dimensions for uniform grid
+    const nodeW = 180;
+    const nodeH = 100;
+    const cols = Math.min(colsHint, nodes.length);
+
+    nodes.forEach((n, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      n.position.x = col * (nodeW + gapX);
+      n.position.y = row * (nodeH + gapY);
+    });
+
+    this._controller.render();
+    setTimeout(() => this._controller?.fitToView(), 50);
+  }
+
+  _openParentNode() {
+    if (!this._parentNode || !this.parentController) return;
+    // Select and scroll to the SubGraph node in the main graph
+    this.parentController.selection = new Set([this._parentNode.id]);
+    this.parentController.render();
+    // Center view on it
+    const n = this._parentNode;
+    const x = n.position.x + (n.size?.w || 170) / 2;
+    const y = n.position.y + (n.size?.h || 76) / 2;
+    const r = this.parentController.renderer;
+    r.setTransform({
+      scale: r.scale,
+      offsetX: r.width  / 2 - x * r.scale,
+      offsetY: r.height / 2 - y * r.scale,
+    });
+    this.parentController.render();
   }
 
   // ─── Resize panel drag ─────────────────────────────────────────────────────
@@ -359,6 +476,11 @@ export class SubGraphPanel {
     this._el.style.display = 'flex';
     this._open = true;
     this._applyLayout();
+
+    // Sync slot layout toggle button highlights to current layout
+    const currentLayout = this.parentController?.slotLayout || 'horizontal';
+    if (this._slotHBtn) this._slotHBtn.style.background = currentLayout === 'horizontal' ? 'rgba(99,179,237,0.2)' : 'none';
+    if (this._slotVBtn) this._slotVBtn.style.background = currentLayout === 'vertical'   ? 'rgba(99,179,237,0.2)' : 'none';
   }
 
   toggle(parentNode, subGraphData = null, breadcrumb = []) {
@@ -426,19 +548,8 @@ export class SubGraphPanel {
     const graph    = new Graph({ hooks, registry: this.registry });
     const renderer = new CanvasRenderer(this._canvas, { theme: this.theme, registry: this.registry });
 
-    // ── Edge canvas (z=15, above HTML overlay) ───────────────────
-    const edgeCanvas = document.createElement('canvas');
-    Object.assign(edgeCanvas.style, {
-      position: 'absolute', top: '0', left: '0',
-      width: '100%', height: '100%',
-      pointerEvents: 'none', zIndex: '15',
-    });
-    this._canvasWrapEl.appendChild(edgeCanvas);
-    const edgeRenderer = new CanvasRenderer(edgeCanvas, { theme: this.theme, registry: this.registry });
-    // Share transform with main renderer via getters
-    Object.defineProperty(edgeRenderer, 'scale',   { get: () => renderer.scale });
-    Object.defineProperty(edgeRenderer, 'offsetX', { get: () => renderer.offsetX });
-    Object.defineProperty(edgeRenderer, 'offsetY', { get: () => renderer.offsetY });
+    // No separate edge canvas — edges are drawn on the main renderer canvas to render behind nodes
+    const edgeRenderer = null;
 
     // ── Port canvas (z=20, above edge canvas) ────────────────────
     const portCanvas = document.createElement('canvas');
@@ -457,7 +568,6 @@ export class SubGraphPanel {
     // ── Icon manager ─────────────────────────────────────────────
     const icons = this.iconManager ?? new IconManager();
     renderer.iconManager    = icons;
-    edgeRenderer.iconManager = icons;
 
     // ── Context menu ─────────────────────────────────────────────
     const contextMenu = new ContextMenu({ graph, hooks, renderer, commandStack: null });
@@ -466,6 +576,9 @@ export class SubGraphPanel {
     const controller = new Controller({
       graph, renderer, hooks, htmlOverlay, contextMenu, edgeRenderer, portRenderer,
     });
+    if (this.parentController) {
+      controller.slotLayout = this.parentController.slotLayout;
+    }
 
     // Wire context menu now that controller (and its stack) exist
     contextMenu.commandStack = controller.stack;
@@ -492,7 +605,6 @@ export class SubGraphPanel {
       const w = this._canvas.clientWidth;
       const h = this._canvas.clientHeight;
       renderer.resize(w, h);
-      edgeRenderer.resize(w, h);
       portRenderer.resize(w, h);
       controller.render();
     });
@@ -520,7 +632,7 @@ export class SubGraphPanel {
 
     this._graph         = graph;
     this._renderer      = renderer;
-    this._edgeRenderer  = edgeRenderer;
+    this._edgeRenderer  = renderer; // for compatibility
     this._portRenderer  = portRenderer;
     this._htmlOverlay   = htmlOverlay;
     this._controller    = controller;
@@ -533,6 +645,10 @@ export class SubGraphPanel {
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
   destroy() {
+    // Always remove drag listeners — they may still be attached if drag was interrupted
+    window.removeEventListener('mousemove', this._onResizeMove);
+    window.removeEventListener('mouseup',   this._onResizeUp);
+    document.body.style.userSelect = '';
     this.close();
     this._ro?.disconnect();
     this._controller?.destroy();

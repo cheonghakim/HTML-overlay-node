@@ -42,11 +42,11 @@ export class Graph {
     const height = opts.height || def.size?.h || this._calculateDefaultNodeHeight(def);
 
     const node = new Node({
+      ...opts,
       type,
       title: def.title,
       width: opts.width || def.size?.w || 140,
       height,
-      ...opts,
     });
     for (const input of def.inputs || []) {
       node.addInput(input.name, input.datatype, input.portType || "data");
@@ -219,13 +219,30 @@ export class Graph {
     }
   }
 
+  /**
+   * Forward-only migration chain. Each entry converts fromVersion → toVersion.
+   * To add a new schema version: push a new entry and bump SCHEMA_VERSION.
+   */
+  static _migrations = [
+    {
+      fromVersion: 1,
+      toVersion: 2,
+      migrate(data) {
+        data.meta = data.meta ?? { ...Graph.DEFAULT_META };
+      },
+    },
+  ];
+
   static _migrate(json) {
     const data = typeof json === "string" ? JSON.parse(json) : deepClone(json);
-    const ver = data.version ?? 1;
+    let ver = data.version ?? 1;
 
-    if (ver < 2) {
-      data.meta = data.meta ?? { ...Graph.DEFAULT_META };
-      data.version = 2;
+    for (const step of Graph._migrations) {
+      if (ver === step.fromVersion) {
+        step.migrate(data);
+        data.version = step.toVersion;
+        ver = step.toVersion;
+      }
     }
 
     return data;
@@ -309,7 +326,7 @@ export class Graph {
         x: Number.isFinite(rawNode.x) ? rawNode.x : 0,
         y: Number.isFinite(rawNode.y) ? rawNode.y : 0,
         w: Number.isFinite(rawNode.w) ? rawNode.w : def.size?.w || 140,
-        h: Number.isFinite(rawNode.h) ? rawNode.h : this._calculateDefaultNodeHeight(def),
+        h: Number.isFinite(rawNode.h) ? rawNode.h : def.size?.h || this._calculateDefaultNodeHeight(def),
         inputs: this._normalizePortList(rawNode.inputs, "in", rawNode.id, "inputs"),
         outputs: this._normalizePortList(rawNode.outputs, "out", rawNode.id, "outputs"),
         state: this._normalizeSerializableValue(rawNode.state, `node "${rawNode.id}" state`, {

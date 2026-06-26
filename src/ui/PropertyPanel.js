@@ -137,8 +137,9 @@ export class PropertyPanel {
 
     const content = this.panel.querySelector('.panel-content');
     content.innerHTML = `
-      ${this._renderStateSection(node)}
       ${this._renderBasicInfo(node)}
+      ${this._renderSubGraphActions(node)}
+      ${this._renderStateSection(node)}
       ${this._renderPositionSize(node)}
       ${this._renderConnections(node)}
       ${this._renderPorts(node)}
@@ -159,12 +160,12 @@ export class PropertyPanel {
         <div class="section-title">Basic Info</div>
         <div class="section-body">
           <div class="field">
-            <label>Type</label>
-            <input type="text" value="${_esc(node.type)}" readonly />
-          </div>
-          <div class="field">
             <label>Title</label>
             <input type="text" data-field="title" value="${_esc(node.title || '')}" />
+          </div>
+          <div class="field">
+            <label>Type</label>
+            <input type="text" value="${_esc(node.type)}" readonly />
           </div>
           <div class="field">
             <label>ID</label>
@@ -528,6 +529,37 @@ export class PropertyPanel {
     });
 
     this.panel.querySelector('.panel-close-btn')?.addEventListener('click', () => this.close());
+
+    // ── SubGraph open/close button ────────────────────────────────
+    this.panel.querySelector('.sg-open-btn')?.addEventListener('click', () => {
+      const node  = this.currentNode;
+      const panel = this.controller?.subNodePanel;
+      if (!node || !panel) return;
+      panel.toggle(node, node.state.subGraphData, ['메인 그래프', node.title]);
+      setTimeout(() => this._renderContent(), 60);
+    });
+
+    // ── Port name editing ─────────────────────────────────────────
+    this.panel.querySelectorAll('.port-name-input').forEach(input => {
+      input.addEventListener('change', () => {
+        this._renamePort(input.dataset.portDir, input.dataset.portId, input.value.trim());
+      });
+      // Prevent canvas interactions while typing
+      input.addEventListener('mousedown', e => e.stopPropagation());
+      input.addEventListener('click',     e => e.stopPropagation());
+    });
+  }
+
+  /** Rename a port directly and emit node:updated. */
+  _renamePort(dir, portId, newName) {
+    const node = this.currentNode;
+    if (!node) return;
+    const ports = dir === 'input' ? node.inputs : node.outputs;
+    const port  = ports.find(p => p.id === portId);
+    if (!port) return;
+    port.name = newName;
+    this.hooks?.emit('node:updated', node);
+    this.render?.();
   }
 
   // ─── Auto-rendered state fallback ─────────────────────────────────────────────
@@ -585,7 +617,27 @@ export class PropertyPanel {
     }
   }
 
-  // ─── Connections / Ports / Live values ────────────────────────────────────────
+  // ─── SubGraph / SlotLayout / Connections / Ports / Live values ───────────────
+
+  /** "Open Sub-Playbook" shortcut button — only for util/SubGraph nodes */
+  _renderSubGraphActions(node) {
+    if (node.type !== 'util/SubGraph') return '';
+    const panel  = this.controller?.subNodePanel;
+    const isOpen = panel?.isOpenFor(node.id);
+    const btnClass = isOpen ? 'sg-open-btn sg-btn-close' : 'sg-open-btn sg-btn-open';
+    const icon  = isOpen ? '✕' : '⊞';
+    const label = isOpen ? '서브 플레이북 닫기' : '서브 플레이북 열기';
+    return `
+      <div class="section">
+        <div class="section-title">서브 플레이북</div>
+        <div class="section-body">
+          <button class="${btnClass}" data-node-id="${_esc(node.id)}">
+            <span class="sg-btn-icon">${icon}</span>
+            <span class="sg-btn-label">${label}</span>
+          </button>
+        </div>
+      </div>`;
+  }
 
   _renderConnections(node) {
     const edges    = [...this.graph.edges.values()];
@@ -594,24 +646,34 @@ export class PropertyPanel {
     if (!incoming.length && !outgoing.length) return '';
 
     const edgeLabel = (e, dir) => {
-      const otherId = dir === 'in' ? e.fromNode : e.toNode;
-      const other   = this.graph.nodes.get(otherId);
-      return `<div class="port-item">
-        <span class="port-icon data"></span>
-        <span class="port-name" style="font-size:10px;color:#5a5a78;">${_esc(other?.title ?? otherId)}</span>
+      const otherId  = dir === 'in' ? e.fromNode : e.toNode;
+      const other    = this.graph.nodes.get(otherId);
+      const myPort   = dir === 'in'
+        ? node.inputs.find(p => p.id === e.toPort)
+        : node.outputs.find(p => p.id === e.fromPort);
+      const isExec   = myPort?.portType === 'exec';
+      const arrow    = dir === 'in' ? '←' : '→';
+      return `<div class="port-item" style="gap:6px;">
+        <span class="port-icon ${isExec ? 'exec' : 'data'}" title="${isExec ? 'exec' : 'data'}"></span>
+        <span style="font-size:9px;color:rgba(255,255,255,0.3);flex-shrink:0;">${arrow}</span>
+        <span class="port-name" style="font-size:10px;">${_esc(other?.title ?? otherId)}</span>
+        ${myPort?.name ? `<span class="port-type" style="font-size:9px;opacity:0.5;">${_esc(myPort.name)}</span>` : ''}
       </div>`;
     };
 
     return `
       <div class="section">
-        <div class="section-title">Connections</div>
+        <div class="section-title">연결 (Connections)</div>
+        <div class="section-desc" style="font-size:9.5px;color:rgba(255,255,255,0.35);margin-bottom:6px;">
+          이 노드와 링크로 연결된 이웃 노드 목록입니다.
+        </div>
         <div class="section-body">
           ${incoming.length ? `<div class="port-group">
-            <div class="port-group-title">Incoming (${incoming.length})</div>
+            <div class="port-group-title">들어오는 연결 (${incoming.length})</div>
             ${incoming.map(e => edgeLabel(e, 'in')).join('')}
           </div>` : ''}
           ${outgoing.length ? `<div class="port-group">
-            <div class="port-group-title">Outgoing (${outgoing.length})</div>
+            <div class="port-group-title">나가는 연결 (${outgoing.length})</div>
             ${outgoing.map(e => edgeLabel(e, 'out')).join('')}
           </div>` : ''}
         </div>
@@ -620,25 +682,36 @@ export class PropertyPanel {
 
   _renderPorts(node) {
     if (!node.inputs.length && !node.outputs.length) return '';
+
+    const portRow = (p, dir) => {
+      const isExec = p.portType === 'exec';
+      const badge  = isExec
+        ? `<span class="port-type" style="background:rgba(52,211,153,0.15);color:#34d399;">exec</span>`
+        : (p.datatype ? `<span class="port-type">${_esc(p.datatype)}</span>` : '');
+      return `<div class="port-item" style="gap:5px;align-items:center;">
+        <span class="port-icon ${p.portType || 'data'}" title="${p.portType || 'data'}"></span>
+        <input class="port-name-input" type="text"
+          data-port-id="${_esc(p.id)}" data-port-dir="${dir}"
+          value="${_esc(p.name)}" placeholder="(unnamed)"
+          title="포트 이름 편집" />
+        ${badge}
+      </div>`;
+    };
+
     return `
       <div class="section">
-        <div class="section-title">Ports</div>
+        <div class="section-title">슬롯 (Ports)</div>
+        <div class="section-desc" style="font-size:9.5px;color:rgba(255,255,255,0.35);margin-bottom:6px;">
+          다른 노드와 연결되는 슬롯입니다. 이름을 클릭해 수정할 수 있습니다.
+        </div>
         <div class="section-body">
           ${node.inputs.length ? `<div class="port-group">
-            <div class="port-group-title">Inputs (${node.inputs.length})</div>
-            ${node.inputs.map(p => `<div class="port-item">
-              <span class="port-icon ${p.portType || 'data'}"></span>
-              <span class="port-name">${_esc(p.name)}</span>
-              ${p.datatype ? `<span class="port-type">${_esc(p.datatype)}</span>` : ''}
-            </div>`).join('')}
+            <div class="port-group-title">입력 (${node.inputs.length})</div>
+            ${node.inputs.map(p => portRow(p, 'input')).join('')}
           </div>` : ''}
           ${node.outputs.length ? `<div class="port-group">
-            <div class="port-group-title">Outputs (${node.outputs.length})</div>
-            ${node.outputs.map(p => `<div class="port-item">
-              <span class="port-icon ${p.portType || 'data'}"></span>
-              <span class="port-name">${_esc(p.name)}</span>
-              ${p.datatype ? `<span class="port-type">${_esc(p.datatype)}</span>` : ''}
-            </div>`).join('')}
+            <div class="port-group-title">출력 (${node.outputs.length})</div>
+            ${node.outputs.map(p => portRow(p, 'output')).join('')}
           </div>` : ''}
         </div>
       </div>`;

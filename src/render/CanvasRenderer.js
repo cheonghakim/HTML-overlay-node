@@ -15,6 +15,13 @@ export class CanvasRenderer {
     this.offsetX = 0;
     this.offsetY = 0;
 
+    // HiDPI: physical-to-logical ratio; updated in resize()
+    this._dpr = window.devicePixelRatio || 1;
+    this._logicalW = canvas.width;
+    this._logicalH = canvas.height;
+    // Cached screen-size gradients (invalidated on resize)
+    this._gridGradientCache = null;
+
     // 'bezier' | 'line' | 'orthogonal'
     this.edgeStyle = edgeStyle;
 
@@ -33,17 +40,17 @@ export class CanvasRenderer {
         headerAlpha: 0.22,
         text: "#f3f6fb",
         textMuted: "#95a0ad",
-        port: "#66d9ef",
+        port: "#7a8c9e",
         portExec: "#34d399",
         edge: "rgba(142, 150, 160, 0.28)",
         edgeExec: "rgba(124, 214, 172, 0.38)",
-        edgeData: "rgba(133, 194, 208, 0.36)",
+        edgeData: "rgba(122, 140, 158, 0.36)",
         edgeActive: "#8dd7b4",
-        edgeActiveData: "#92cdda",
-        accent: "#66d9ef",
-        accentBright: "#a5f3fc",
-        accentGlow: "rgba(102, 217, 239, 0.18)",
-        nodeRadius: 2,
+        edgeActiveData: "#9fb2c4",
+        accent: "#7a8c9e",
+        accentBright: "#c0cbd6",
+        accentGlow: "rgba(122, 140, 158, 0.18)",
+        nodeRadius: 5,
         groupRadius: 2,
         headerHeight: 22,
         flowSpeed: 180,
@@ -53,6 +60,11 @@ export class CanvasRenderer {
     );
   }
 
+  /** Logical (CSS-pixel) canvas width — use instead of canvas.width for viewport math. */
+  get width()  { return this._logicalW; }
+  /** Logical (CSS-pixel) canvas height — use instead of canvas.height for viewport math. */
+  get height() { return this._logicalH; }
+
   setEdgeStyle(style) {
     this.edgeStyle = style === "line" || style === "orthogonal" ? style : "bezier";
   }
@@ -60,8 +72,23 @@ export class CanvasRenderer {
     this.registry = reg;
   }
   resize(w, h) {
-    this.canvas.width = w;
-    this.canvas.height = h;
+    const dpr = window.devicePixelRatio || 1;
+    this._dpr = dpr;
+    this._logicalW = w;
+    this._logicalH = h;
+    this.canvas.width  = Math.round(w * dpr);
+    this.canvas.height = Math.round(h * dpr);
+    this.canvas.style.width  = w + 'px';
+    this.canvas.style.height = h + 'px';
+    this._gridGradientCache = null; // invalidate cached gradients on resize
+  }
+
+  /** Clear all physical pixels regardless of current transform. */
+  clear() {
+    this.ctx.save();
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.restore();
   }
   setTransform({ scale = this.scale, offsetX = this.offsetX, offsetY = this.offsetY } = {}) {
     this.scale = Math.min(this.maxScale, Math.max(this.minScale, scale));
@@ -102,13 +129,17 @@ export class CanvasRenderer {
     };
   }
   _applyTransform() {
-    const { ctx } = this;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.translate(this.offsetX, this.offsetY);
-    ctx.scale(this.scale, this.scale);
+    const dpr = this._dpr || 1;
+    // Combines dpr scale + pan + zoom into one matrix for crisp HiDPI rendering
+    this.ctx.setTransform(
+      dpr * this.scale, 0,
+      0, dpr * this.scale,
+      this.offsetX * dpr, this.offsetY * dpr
+    );
   }
   _resetTransform() {
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const dpr = this._dpr || 1;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   // ── Drawing ────────────────────────────────────────────────────────────────
@@ -138,7 +169,7 @@ export class CanvasRenderer {
     this._resetTransform();
 
     const px = Math.round(sx) + 0.5;
-    const py = Math.round(sy) + 0.5;
+    const py = sy; // no rounding: prevents 0.5 px vertical shift that misaligns icon and title
 
     ctx.font = `${fontPx * this.scale}px "Inter", system-ui, sans-serif`;
     ctx.fillStyle = color;
@@ -153,40 +184,41 @@ export class CanvasRenderer {
   }
 
   drawGrid() {
-    const { ctx, canvas, theme, scale, offsetX, offsetY } = this;
+    const { ctx, theme, scale, offsetX, offsetY } = this;
+    const W = this.width;
+    const H = this.height;
 
     this._resetTransform();
     ctx.fillStyle = theme.bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, W, H);
 
-    const bgGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    bgGradient.addColorStop(0, theme.bgAccentSoft || theme.bg);
-    bgGradient.addColorStop(0.38, theme.bg || theme.bgAccentSoft);
-    bgGradient.addColorStop(1, theme.bgAccent || theme.bg);
-    ctx.fillStyle = bgGradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Cache screen-size gradients — only recreated on resize (see resize())
+    if (!this._gridGradientCache) {
+      const bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, theme.bgAccentSoft || theme.bg);
+      bg.addColorStop(0.38, theme.bg || theme.bgAccentSoft);
+      bg.addColorStop(1, theme.bgAccent || theme.bg);
 
-    // Symmetric vignette — centered so all edges darken equally
-    const vignette = ctx.createRadialGradient(
-      canvas.width * 0.5,
-      canvas.height * 0.5,
-      Math.min(canvas.width, canvas.height) * 0.05,
-      canvas.width * 0.5,
-      canvas.height * 0.5,
-      Math.max(canvas.width, canvas.height) * 0.82
-    );
-    vignette.addColorStop(0,    "rgba(255,255,255,0.012)");
-    vignette.addColorStop(0.5,  "rgba(255,255,255,0)");
-    vignette.addColorStop(1,    "rgba(0,0,0,0.13)");
-    ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const vig = ctx.createRadialGradient(
+        W * 0.5, H * 0.5, Math.min(W, H) * 0.05,
+        W * 0.5, H * 0.5, Math.max(W, H) * 0.82
+      );
+      vig.addColorStop(0,   "rgba(255,255,255,0.012)");
+      vig.addColorStop(0.5, "rgba(255,255,255,0)");
+      vig.addColorStop(1,   "rgba(0,0,0,0.13)");
+      this._gridGradientCache = { bg, vig };
+    }
+    ctx.fillStyle = this._gridGradientCache.bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = this._gridGradientCache.vig;
+    ctx.fillRect(0, 0, W, H);
 
     this._applyTransform();
 
     const x0 = -offsetX / scale;
     const y0 = -offsetY / scale;
-    const x1 = (canvas.width - offsetX) / scale;
-    const y1 = (canvas.height - offsetY) / scale;
+    const x1 = (W - offsetX) / scale;
+    const y1 = (H - offsetY) / scale;
 
     // Minor dots (20px grid — matches snap grid)
     const minorStep = 20;
@@ -227,6 +259,45 @@ export class CanvasRenderer {
     this._resetTransform();
   }
 
+  // ── Viewport culling helpers ──────────────────────────────────────────────
+
+  /** Returns the visible world-space rectangle, expanded by `margin` on all sides. */
+  _viewportBounds(margin = 0) {
+    const { scale, offsetX, offsetY } = this;
+    const left   = -offsetX / scale - margin;
+    const top    = -offsetY / scale - margin;
+    const right  = left + this.width  / scale + margin * 2;
+    const bottom = top  + this.height / scale + margin * 2;
+    return { left, top, right, bottom };
+  }
+
+  /** True when the node's world bounding-box overlaps the given viewport rect. */
+  _nodeInView(node, vb) {
+    const { x, y, w, h } = node.computed;
+    return x < vb.right && x + w > vb.left && y < vb.bottom && y + h > vb.top;
+  }
+
+  /**
+   * True when the edge could be visible — uses the bounding-box of both
+   * endpoint nodes as a cheap proxy.  Accepts a pre-built Set of visible
+   * node ids so the per-node check is O(1).
+   */
+  _edgeInView(graph, edge, visibleNodes) {
+    if (visibleNodes.has(edge.fromNode) || visibleNodes.has(edge.toNode)) return true;
+    // Both endpoints outside — check their combined bounding box against viewport
+    const from = graph.nodes.get(edge.fromNode);
+    const to   = graph.nodes.get(edge.toNode);
+    if (!from || !to || !from.computed || !to.computed) return true;
+    const vb = this._viewportBounds(0);
+    const eLeft   = Math.min(from.computed.x, to.computed.x);
+    const eTop    = Math.min(from.computed.y, to.computed.y);
+    const eRight  = Math.max(from.computed.x + from.computed.w, to.computed.x + to.computed.w);
+    const eBottom = Math.max(from.computed.y + from.computed.h, to.computed.y + to.computed.h);
+    return eLeft < vb.right && eRight > vb.left && eTop < vb.bottom && eBottom > vb.top;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   draw(
     graph,
     {
@@ -238,19 +309,34 @@ export class CanvasRenderer {
       activeEdgeTimes = new Map(),
       drawEdges = true,
       loopActiveEdges = false,
+      hoveredNodeId = null,
+      hoveredPortId = null,
+      connecting = false,
+      slotLayout = "horizontal",
+      alignmentGuides = null,
     } = {}
   ) {
+    this.hoveredPortId = hoveredPortId;
+    this.slotLayout = slotLayout;
     graph.updateWorldTransforms();
 
     this.drawGrid();
     const { ctx, theme } = this;
     this._applyTransform();
 
+    // Pre-compute visible node set for O(1) edge culling
+    const vb = this._viewportBounds(200);
+    const visibleNodes = new Set();
+    for (const n of graph.nodes.values()) {
+      if (this._nodeInView(n, vb)) visibleNodes.add(n.id);
+    }
+
     ctx.save();
 
     // 1. Draw Groups
     for (const n of graph.nodes.values()) {
       if (n.type === "core/Group") {
+        if (!visibleNodes.has(n.id)) continue;
         const sel = selection.has(n.id);
         const def = this.registry?.types?.get(n.type);
         if (def?.onDraw) def.onDraw(n, { ctx, theme, renderer: this });
@@ -263,88 +349,69 @@ export class CanvasRenderer {
       ctx.lineWidth = 5.5 / this.scale;
 
       for (const e of graph.edges.values()) {
+        if (!this._edgeInView(graph, e, visibleNodes)) continue;
         const isActive = activeEdges && activeEdges.has(e.id);
 
         if (isActive) {
-          const activeColor = this._getEdgeActiveColor(graph, e);
-          const activationTime = activeEdgeTimes?.get(e.id) ?? time;
-          ctx.save();
-          
-          // Outline for active link
-          ctx.strokeStyle = "#0C0C0C";
-          ctx.lineWidth = 6.0 / this.scale;
-          this._drawEdge(graph, e);
-
-          ctx.strokeStyle = this._softAlpha(activeColor, 0.9);
-          ctx.lineWidth = 4.2 / this.scale;
-          ctx.setLineDash([]);
-          this._drawEdge(graph, e);
-          ctx.restore();
-
           const deepColor = this._getEdgeDeepColor(graph, e);
-          const dashOffset = -((time - activationTime) / 18) / this.scale;
+          const isExecEdge = this._getEdgePortType(graph, e) === 'exec';
+
           ctx.save();
-          ctx.strokeStyle = deepColor;
-          ctx.shadowColor = deepColor;
-          ctx.shadowBlur = 6 / this.scale;
-          ctx.lineWidth = 2.8 / this.scale;
-          ctx.setLineDash([12 / this.scale, 18 / this.scale]);
-          ctx.lineDashOffset = dashOffset;
-          this._drawEdge(graph, e);
-          ctx.restore();
-
-          const flowSpeed = this.theme.flowSpeed || 150;
-          const edgeLen = Math.max(50, this._getEdgeLength(graph, e));
-          const duration = (edgeLen / flowSpeed) * 1000;
-          const rawT = (time - activationTime) / duration;
-          const dotT = loopActiveEdges ? ((time / 1000) * (flowSpeed / edgeLen)) % 1 : Math.min(1, rawT);
-
-          const dotPos = this._getEdgeDotPosition(graph, e, dotT);
-          if (dotPos) {
-            ctx.save();
-            const deepColor = this._getEdgeDeepColor(graph, e);
-            ctx.fillStyle = deepColor;
-            ctx.shadowColor = deepColor;
-            ctx.shadowBlur = 10 / this.scale;
-            ctx.beginPath();
-            ctx.arc(dotPos.x, dotPos.y, 2.0 / this.scale, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-
-            const spacing = Math.max(20, this.theme.linkPulseSpacing || 28);
-            const trailOffsets = [spacing / edgeLen];
-            for (const trailOffset of trailOffsets) {
-              const trailT = loopActiveEdges
-                ? (dotT - trailOffset + 1) % 1
-                : Math.max(0, dotT - trailOffset);
-              if (!loopActiveEdges && trailT <= 0) continue;
-              const trailPos = this._getEdgeDotPosition(graph, e, trailT);
-              if (!trailPos) continue;
-              ctx.save();
-              ctx.fillStyle = this._softAlpha(activeColor, 0.35);
-              ctx.beginPath();
-              ctx.arc(trailPos.x, trailPos.y, 1.4 / this.scale, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.restore();
-            }
-          }
-        } else {
-          const baseColor = this._getEdgeBaseColor(graph, e);
           ctx.setLineDash([]);
-          
-          // Link Outline
-          ctx.strokeStyle = "#0C0C0C";
-          ctx.lineWidth = 4.8 / this.scale;
+
+          // Dark outer shell
+          ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+          ctx.lineWidth = 3.8 / this.scale;
           this._drawEdge(graph, e);
 
-          // Inner Link
-          ctx.strokeStyle = baseColor;
-          ctx.lineWidth = 3.2 / this.scale;
+          // Soft colored halo
+          ctx.strokeStyle = this._softAlpha(deepColor, 0.22);
+          ctx.lineWidth = 2.8 / this.scale;
           this._drawEdge(graph, e);
 
-          ctx.strokeStyle = this._softAlpha(baseColor, 0.3);
-          ctx.lineWidth = 2.0 / this.scale;
+          // Flowing animated dashes — exec: discrete pulses, data: continuous stream
+          const dashLen = (isExecEdge ? 6 : 9) / this.scale;
+          const gapLen  = (isExecEdge ? 12 : 7) / this.scale;
+          ctx.setLineDash([dashLen, gapLen]);
+          ctx.lineDashOffset = -(time / 1000) * 95;
+          ctx.strokeStyle = deepColor;
+          ctx.lineWidth = 1.8 / this.scale;
+          ctx.shadowColor = deepColor;
+          ctx.shadowBlur = 4 / this.scale;
+          ctx.lineCap = 'round';
           this._drawEdge(graph, e);
+
+          // Bright white core on each dash
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+          ctx.lineWidth = 0.6 / this.scale;
+          this._drawEdge(graph, e);
+
+          ctx.restore();
+        } else {
+          const isExecEdge = this._getEdgePortType(graph, e) === 'exec';
+
+          ctx.save();
+          ctx.setLineDash([]);
+
+          // Dark outer shell
+          ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+          ctx.lineWidth = 4.2 / this.scale;
+          this._drawEdge(graph, e);
+
+          // Visible mid-tone wire base
+          ctx.strokeStyle = 'rgba(78, 93, 110, 0.70)';
+          ctx.lineWidth = 2.8 / this.scale;
+          this._drawEdge(graph, e);
+
+          // Port-type color accent
+          ctx.strokeStyle = isExecEdge
+            ? 'rgba(52, 211, 153, 0.40)'
+            : 'rgba(102, 217, 239, 0.34)';
+          ctx.lineWidth = 1.5 / this.scale;
+          this._drawEdge(graph, e);
+
+          ctx.restore();
         }
       }
     }
@@ -389,17 +456,19 @@ export class CanvasRenderer {
     // 3. Draw Non-Group Nodes
     for (const n of graph.nodes.values()) {
       if (n.type !== "core/Group") {
+        if (!visibleNodes.has(n.id)) continue;
         const sel = selection.has(n.id);
         const def = this.registry?.types?.get(n.type);
         const hasHtmlOverlay = !!def?.html;
+        const showPorts = connecting || (hoveredNodeId === n.id);
 
-        this._drawNode(n, sel, !hasHtmlOverlay ? true : false);
+        this._drawNode(n, sel, !showPorts);
 
         if (def?.onDraw) {
           def.onDraw(n, { ctx, theme, renderer: this });
         }
 
-        if (hasHtmlOverlay) {
+        if (hasHtmlOverlay && showPorts) {
           this._drawPorts(n);
         }
       }
@@ -409,8 +478,37 @@ export class CanvasRenderer {
     if (activeNodes.size > 0) {
       for (const nodeId of activeNodes) {
         const node = graph.nodes.get(nodeId);
-        if (node) this._drawActiveNodeBorder(node, time);
+        if (node && visibleNodes.has(nodeId)) this._drawActiveNodeBorder(node, time);
       }
+    }
+
+    // Draw alignment guidelines
+    if (alignmentGuides) {
+      ctx.save();
+      ctx.strokeStyle = theme.alignmentGuide || "rgba(0, 245, 255, 0.4)"; // glowing cyan
+      ctx.lineWidth = 1 / this.scale; // 1px thin
+      ctx.setLineDash([4 / this.scale, 4 / this.scale]); // dotted
+
+      // Draw horizontal guides (constant Y)
+      if (alignmentGuides.h && Array.isArray(alignmentGuides.h)) {
+        for (const y of alignmentGuides.h) {
+          ctx.beginPath();
+          ctx.moveTo(vb.left, y);
+          ctx.lineTo(vb.right, y);
+          ctx.stroke();
+        }
+      }
+
+      // Draw vertical guides (constant X)
+      if (alignmentGuides.v && Array.isArray(alignmentGuides.v)) {
+        for (const x of alignmentGuides.v) {
+          ctx.beginPath();
+          ctx.moveTo(x, vb.top);
+          ctx.lineTo(x, vb.bottom);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
     }
 
     this._resetTransform();
@@ -459,7 +557,7 @@ export class CanvasRenderer {
   getNodeIconRects(node) {
     const iconNames = this._getNodeIconNames(node);
     const headerH = this.theme.headerHeight ?? 22;
-    const iconSize = 12;
+    const iconSize = 10;
     const iconPad = 8;
     const { x, y, w } = node.computed;
     const cy = y + headerH / 2;
@@ -499,12 +597,17 @@ export class CanvasRenderer {
   }
 
   _getEdgeActiveColor(graph, e) {
-    return "#4B4B4B";
+    const isExec = this._getEdgePortType(graph, e) === "exec";
+    return isExec
+      ? (this.theme.edgeActive ?? "#8dd7b4")
+      : (this.theme.edgeActiveData ?? "#92cdda");
   }
 
   _getEdgeDeepColor(graph, e) {
-    // Enterprise Green Flow
-    return "#34d399";
+    const isExec = this._getEdgePortType(graph, e) === "exec";
+    return isExec
+      ? (this.theme.portExec ?? "#34d399")
+      : (this.theme.port ?? "#66d9ef");
   }
 
   _drawNode(node, selected, skipPorts = false) {
@@ -521,10 +624,12 @@ export class CanvasRenderer {
     // Selection highlight — category-colored glow outline
     if (selected) {
       ctx.save();
-      ctx.strokeStyle = "#747474";
-      ctx.lineWidth = 1.6 / this.scale;
-      const selPad = 6 / this.scale;
-      roundRect(ctx, x - selPad, y - selPad, w + selPad * 2, h + selPad * 2, 12 / this.scale);
+      ctx.strokeStyle = this._rgba(categoryColor, 0.7);
+      ctx.lineWidth = 1.2 / this.scale;
+      ctx.shadowColor = this._rgba(categoryColor, 0.45);
+      ctx.shadowBlur = 7 / this.scale;
+      const selPad = 5 / this.scale;
+      roundRect(ctx, x - selPad, y - selPad, w + selPad * 2, h + selPad * 2, (r + 4) / this.scale);
       ctx.stroke();
       ctx.restore();
     }
@@ -541,14 +646,21 @@ export class CanvasRenderer {
 
     // Node body base
     ctx.fillStyle = "#1E1E1E";
-    ctx.strokeStyle = selected ? "rgba(116, 116, 116, 0.58)" : "rgba(255,255,255,0.08)";
+    ctx.strokeStyle = selected ? this._rgba(categoryColor, 0.38) : "rgba(255,255,255,0.08)";
     ctx.lineWidth = 1.2 / this.scale;
     roundRect(ctx, x, y, w, h, r);
     ctx.fill();
     ctx.stroke();
 
-    // Body inner glow — category color bleeding from header into body
-
+    // Subtle body tint — category color bleeds down from header
+    ctx.save();
+    const bodyTint = ctx.createLinearGradient(x, y + headerH, x, y + h);
+    bodyTint.addColorStop(0, this._rgba(categoryColor, 0.06));
+    bodyTint.addColorStop(0.6, 'rgba(0,0,0,0)');
+    ctx.fillStyle = bodyTint;
+    roundRect(ctx, x, y + headerH, w, h - headerH, { tl: 0, tr: 0, br: r, bl: r });
+    ctx.fill();
+    ctx.restore();
 
     // Header background — dark base
     const headerBase = ctx.createLinearGradient(x, y, x, y + headerH);
@@ -598,10 +710,14 @@ export class CanvasRenderer {
 
     // Header layout: [leftPad][icon][gap][title...][...][expand-btn]
     const iconNames = this._getNodeIconNames(node);
-    const iconSize = 12;
+    const iconSize = 10;
     const iconPad = 8;
-    const iconGap = 4;
+    const iconGap = 5;
+    // cy: geometric center of header — used for icons and right buttons
     const cy = y + headerH / 2;
+    // titleCy: shift text down by 0.5 screen px to compensate for cap-height vs
+    // em-square midpoint (Inter caps sit ~1 px above the canvas "middle" baseline)
+    const titleCy = cy + 0.5 / this.scale;
 
     // Primary type icon — left of title (all except 'expand')
     const primaryIcon = iconNames.find(n => n !== 'expand');
@@ -656,8 +772,8 @@ export class CanvasRenderer {
 
     const rightReserved = rightOff;
 
-    // Title
-    this._drawScreenText(node.title, titleX, cy, {
+    // Title — use titleCy (icon cy + 0.5px offset) for optical alignment
+    this._drawScreenText(node.title, titleX, titleCy, {
       fontPx: CanvasRenderer.FONT_SIZE,
       color: theme.text,
       baseline: "middle",
@@ -669,32 +785,34 @@ export class CanvasRenderer {
 
     // Input ports + labels
     node.inputs.forEach((p, i) => {
-      const rct = portRect(node, p, i, "in");
+      const rct = portRect(node, p, i, "in", this.slotLayout);
       const cx = rct.x + rct.w / 2;
       const cy = rct.y + rct.h / 2;
-      this._drawPortShape(cx, cy, p.portType);
+      this._drawPortShape(cx, cy, p.portType, p.id === this.hoveredPortId);
       if (p.name) {
-        this._drawScreenText(p.name, cx + 10, cy, {
+        const isVert = this.slotLayout === "vertical";
+        this._drawScreenText(p.name, isVert ? cx : cx + 10, isVert ? cy + 10 : cy, {
           fontPx: 10,
           color: theme.textMuted,
-          baseline: "middle",
-          align: "left",
+          baseline: isVert ? "top" : "middle",
+          align: isVert ? "center" : "left",
         });
       }
     });
 
     // Output ports + labels
     node.outputs.forEach((p, i) => {
-      const rct = portRect(node, p, i, "out");
+      const rct = portRect(node, p, i, "out", this.slotLayout);
       const cx = rct.x + rct.w / 2;
       const cy = rct.y + rct.h / 2;
-      this._drawPortShape(cx, cy, p.portType);
+      this._drawPortShape(cx, cy, p.portType, p.id === this.hoveredPortId);
       if (p.name) {
-        this._drawScreenText(p.name, cx - 10, cy, {
+        const isVert = this.slotLayout === "vertical";
+        this._drawScreenText(p.name, isVert ? cx : cx - 10, isVert ? cy - 10 : cy, {
           fontPx: 10,
           color: theme.textMuted,
-          baseline: "middle",
-          align: "right",
+          baseline: isVert ? "bottom" : "middle",
+          align: isVert ? "center" : "right",
         });
       }
     });
@@ -718,15 +836,31 @@ export class CanvasRenderer {
     ctx.closePath();
   }
 
-  _drawPortShape(cx, cy, portType) {
+  _drawPortShape(cx, cy, portType, isHovered = false) {
     const { ctx, theme } = this;
 
     if (portType === "exec") {
-      const s = 5.5 / this.scale;
+      let s = 4.2 / this.scale;
       ctx.save();
+      
+      if (isHovered) {
+        // Draw an elegant, very soft glowing aura diamond
+        const auraS = 6.4 / this.scale;
+        ctx.fillStyle = this._softAlpha(theme.portExec, 0.07);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - auraS);
+        ctx.lineTo(cx + auraS, cy);
+        ctx.lineTo(cx, cy + auraS);
+        ctx.lineTo(cx - auraS, cy);
+        ctx.closePath();
+        ctx.fill();
+
+        s = 4.5 / this.scale;
+      }
+      
       ctx.fillStyle = theme.portExec;
-      ctx.strokeStyle = this._softAlpha(theme.portExec, 0.3);
-      ctx.lineWidth = 1.6 / this.scale;
+      ctx.strokeStyle = this._softAlpha(theme.portExec, 0.4);
+      ctx.lineWidth = 1.0 / this.scale;
       ctx.beginPath();
       ctx.moveTo(cx, cy - s);
       ctx.lineTo(cx + s, cy);
@@ -738,45 +872,68 @@ export class CanvasRenderer {
       ctx.restore();
     } else {
       ctx.save();
-      ctx.strokeStyle = this._softAlpha(theme.port, 0.18);
-      ctx.lineWidth = 3.5 / this.scale;
+      
+      let outerRadius = 5.2 / this.scale;
+      let innerRadius = 3.2 / this.scale;
+      let strokeWidth = 1.0 / this.scale;
+      
+      if (isHovered) {
+        // Draw an elegant, very soft glowing aura circle
+        ctx.fillStyle = this._softAlpha(theme.port, 0.07);
+        ctx.beginPath();
+        ctx.arc(cx, cy, 7.5 / this.scale, 0, Math.PI * 2);
+        ctx.fill();
+
+        outerRadius = 5.5 / this.scale;
+        innerRadius = 3.5 / this.scale;
+        strokeWidth = 1.0 / this.scale;
+      }
+
+      ctx.strokeStyle = this._softAlpha(theme.port, 0.4);
+      ctx.lineWidth = strokeWidth;
       ctx.beginPath();
-      ctx.arc(cx, cy, 7.5 / this.scale, 0, Math.PI * 2);
+      ctx.arc(cx, cy, outerRadius, 0, Math.PI * 2);
       ctx.stroke();
+      
       ctx.fillStyle = theme.port;
       ctx.beginPath();
-      ctx.arc(cx, cy, 3.8 / this.scale, 0, Math.PI * 2);
+      ctx.arc(cx, cy, innerRadius, 0, Math.PI * 2);
       ctx.fill();
+      
       ctx.restore();
     }
   }
 
   _drawPorts(node) {
     node.inputs.forEach((p, i) => {
-      const rct = portRect(node, p, i, "in");
+      const rct = portRect(node, p, i, "in", this.slotLayout || "horizontal");
       const cx = rct.x + rct.w / 2;
       const cy = rct.y + rct.h / 2;
-      this._drawPortShape(cx, cy, p.portType);
+      this._drawPortShape(cx, cy, p.portType, p.id === this.hoveredPortId);
     });
 
     node.outputs.forEach((p, i) => {
-      const rct = portRect(node, p, i, "out");
+      const rct = portRect(node, p, i, "out", this.slotLayout || "horizontal");
       const cx = rct.x + rct.w / 2;
       const cy = rct.y + rct.h / 2;
-      this._drawPortShape(cx, cy, p.portType);
+      this._drawPortShape(cx, cy, p.portType, p.id === this.hoveredPortId);
     });
   }
-
   /** Selection border for HTML overlay nodes, drawn on the edge canvas */
   _drawHtmlSelectionBorder(node) {
     const { ctx } = this;
     const { x, y, w, h } = node.computed;
     const r = this.theme.nodeRadius ?? 8;
-    const pad = 6 / this.scale;
+    const pad = 5 / this.scale;
+
+    const typeDef = this.registry?.types?.get(node.type);
+    const categoryColor = node.color || typeDef?.color || this.theme.accent;
 
     ctx.save();
-    ctx.strokeStyle = "#747474";
-    ctx.lineWidth = 1.5 / this.scale;
+    ctx.strokeStyle = this._rgba(categoryColor, 0.7);
+    ctx.lineWidth = 1.2 / this.scale;
+    ctx.shadowColor = this._rgba(categoryColor, 0.4);
+    ctx.shadowBlur = 6 / this.scale;
     roundRect(ctx, x - pad, y - pad, w + pad * 2, h + pad * 2, r + pad);
     ctx.stroke();
     ctx.restore();
@@ -789,15 +946,20 @@ export class CanvasRenderer {
     const r = this.theme.nodeRadius ?? 8;
     const pad = 8 / this.scale;
 
-    const dashLen = 8 / this.scale;
-    const gapLen = 5 / this.scale;
-    const offset = -(time / 1000) * (50 / this.scale);
+    const typeDef = this.registry?.types?.get(node.type);
+    const categoryColor = node.color || typeDef?.color || this.theme.accent;
+
+    const dashLen = 6 / this.scale;
+    const gapLen = 4 / this.scale;
+    const offset = -(time / 1000) * 60;
 
     ctx.save();
     ctx.setLineDash([dashLen, gapLen]);
     ctx.lineDashOffset = offset;
-    ctx.strokeStyle = "#747474";
-    ctx.lineWidth = 2.0 / this.scale;
+    ctx.strokeStyle = this._rgba(categoryColor, 0.8);
+    ctx.shadowColor = this._rgba(categoryColor, 0.5);
+    ctx.shadowBlur = 5 / this.scale;
+    ctx.lineWidth = 1.5 / this.scale;
     roundRect(ctx, x - pad, y - pad, w + pad * 2, h + pad * 2, r + pad);
     ctx.stroke();
     ctx.restore();
@@ -810,8 +972,8 @@ export class CanvasRenderer {
 
     const iOut = from.outputs.findIndex((p) => p.id === e.fromPort);
     const iIn = to.inputs.findIndex((p) => p.id === e.toPort);
-    const pr1 = portRect(from, null, iOut, "out");
-    const pr2 = portRect(to, null, iIn, "in");
+    const pr1 = portRect(from, null, iOut, "out", this.slotLayout);
+    const pr2 = portRect(to, null, iIn, "in", this.slotLayout);
 
     return {
       x1: pr1.x + pr1.w / 2,
@@ -1039,99 +1201,88 @@ export class CanvasRenderer {
       time = performance.now(),
       tempEdge = null,
       loopActiveEdges = false,
+      slotLayout = "horizontal",
     } = {}
   ) {
-    this._resetTransform();
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.slotLayout = slotLayout;
+    this.clear();
 
     this._applyTransform();
 
     const { ctx, theme } = this;
 
+    // Pre-compute visible nodes for edge culling
+    const vb2 = this._viewportBounds(200);
+    const visibleNodes2 = new Set();
+    for (const n of graph.nodes.values()) {
+      if (this._nodeInView(n, vb2)) visibleNodes2.add(n.id);
+    }
+
     // Draw all edges
     for (const e of graph.edges.values()) {
+      if (!this._edgeInView(graph, e, visibleNodes2)) continue;
       const isActive = activeEdges.has(e.id);
 
       if (isActive) {
-        const activeColor = this._getEdgeActiveColor(graph, e);
-        ctx.save();
-        
-        // Outline for active link
-        ctx.strokeStyle = "#0C0C0C";
-        ctx.lineWidth = 6.0 / this.scale;
-        this._drawEdge(graph, e);
-
-        ctx.strokeStyle = this._softAlpha(activeColor, 0.9);
-        ctx.lineWidth = 4.2 / this.scale;
-        ctx.setLineDash([]);
-        this._drawEdge(graph, e);
-        ctx.restore();
-
-        const flowSpeed = this.theme.flowSpeed || 150;
-        const activationTime = activeEdgeTimes.get(e.id) ?? time;
-        const edgeLen = Math.max(50, this._getEdgeLength(graph, e));
-        const duration = (edgeLen / flowSpeed) * 1000;
-
         const deepColor = this._getEdgeDeepColor(graph, e);
+        const isExecEdge = this._getEdgePortType(graph, e) === 'exec';
+
         ctx.save();
-        ctx.strokeStyle = deepColor;
-        ctx.shadowColor = deepColor;
-        ctx.shadowBlur = 6 / this.scale;
-        ctx.lineWidth = 2.8 / this.scale;
-        ctx.setLineDash([12 / this.scale, 18 / this.scale]);
-        ctx.lineDashOffset = -((time - activationTime) / 18) / this.scale;
-        this._drawEdge(graph, e);
-        ctx.restore();
-
-        const rawT = (time - activationTime) / duration;
-        const dotT = loopActiveEdges ? ((time / 1000) * (flowSpeed / edgeLen)) % 1 : Math.min(1, rawT);
-
-        const dotPos = this._getEdgeDotPosition(graph, e, dotT);
-        if (dotPos) {
-          ctx.save();
-          const deepColor = this._getEdgeDeepColor(graph, e);
-          ctx.fillStyle = deepColor;
-          ctx.shadowColor = deepColor;
-          ctx.shadowBlur = 10 / this.scale;
-          ctx.beginPath();
-          ctx.arc(dotPos.x, dotPos.y, 2.0 / this.scale, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-
-          const spacing = Math.max(20, this.theme.linkPulseSpacing || 28);
-          const trailOffsets = [spacing / edgeLen];
-          for (const trailOffset of trailOffsets) {
-            const trailT = loopActiveEdges
-              ? (dotT - trailOffset + 1) % 1
-              : Math.max(0, dotT - trailOffset);
-            if (!loopActiveEdges && trailT <= 0) continue;
-            const trailPos = this._getEdgeDotPosition(graph, e, trailT);
-            if (!trailPos) continue;
-            ctx.save();
-            ctx.fillStyle = this._softAlpha(activeColor, 0.35);
-            ctx.beginPath();
-            ctx.arc(trailPos.x, trailPos.y, 1.4 / this.scale, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-          }
-        }
-      } else {
-        const baseColor = this._getEdgeBaseColor(graph, e);
         ctx.setLineDash([]);
-        
-        // Link Outline
-        ctx.strokeStyle = "#0C0C0C";
-        ctx.lineWidth = 4.8 / this.scale;
+
+        // Dark outer shell
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+        ctx.lineWidth = 3.8 / this.scale;
         this._drawEdge(graph, e);
 
-        // Inner Link
-        ctx.strokeStyle = baseColor;
-        ctx.lineWidth = 3.2 / this.scale;
+        // Soft colored halo
+        ctx.strokeStyle = this._softAlpha(deepColor, 0.22);
+        ctx.lineWidth = 2.8 / this.scale;
         this._drawEdge(graph, e);
 
-        ctx.strokeStyle = this._softAlpha(baseColor, 0.3);
-        ctx.lineWidth = 2.0 / this.scale;
+        // Flowing animated dashes — exec: discrete pulses, data: continuous stream
+        const dashLen = (isExecEdge ? 6 : 9) / this.scale;
+        const gapLen  = (isExecEdge ? 12 : 7) / this.scale;
+        ctx.setLineDash([dashLen, gapLen]);
+        ctx.lineDashOffset = -(time / 1000) * 95;
+        ctx.strokeStyle = deepColor;
+        ctx.lineWidth = 1.8 / this.scale;
+        ctx.shadowColor = deepColor;
+        ctx.shadowBlur = 4 / this.scale;
+        ctx.lineCap = 'round';
         this._drawEdge(graph, e);
+
+        // Bright white core on each dash
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+        ctx.lineWidth = 0.6 / this.scale;
+        this._drawEdge(graph, e);
+
+        ctx.restore();
+      } else {
+        const isExecEdge = this._getEdgePortType(graph, e) === 'exec';
+
+        ctx.save();
+        ctx.setLineDash([]);
+
+        // Dark outer shell
+        ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+        ctx.lineWidth = 4.2 / this.scale;
+        this._drawEdge(graph, e);
+
+        // Visible mid-tone wire base
+        ctx.strokeStyle = 'rgba(78, 93, 110, 0.70)';
+        ctx.lineWidth = 2.8 / this.scale;
+        this._drawEdge(graph, e);
+
+        // Port-type color accent
+        ctx.strokeStyle = isExecEdge
+          ? 'rgba(52, 211, 153, 0.40)'
+          : 'rgba(102, 217, 239, 0.34)';
+        ctx.lineWidth = 1.5 / this.scale;
+        this._drawEdge(graph, e);
+
+        ctx.restore();
       }
 
       // Edge label at geometric midpoint
@@ -1148,7 +1299,7 @@ export class CanvasRenderer {
     // Selection borders for HTML overlay nodes (drawn above the HTML layer)
     for (const nodeId of selection) {
       const node = graph.nodes.get(nodeId);
-      if (!node) continue;
+      if (!node || !visibleNodes2.has(nodeId)) continue;
       const def = this.registry?.types?.get(node.type);
       if (def?.html) this._drawHtmlSelectionBorder(node);
     }
@@ -1157,7 +1308,7 @@ export class CanvasRenderer {
     if (activeNodes.size > 0) {
       for (const nodeId of activeNodes) {
         const node = graph.nodes.get(nodeId);
-        if (node) this._drawActiveNodeBorder(node, time);
+        if (node && visibleNodes2.has(nodeId)) this._drawActiveNodeBorder(node, time);
       }
     }
 

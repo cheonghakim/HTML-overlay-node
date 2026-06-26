@@ -114,33 +114,8 @@ export function createGraphEditor(
     controller.render();
   });
 
-  // Edge Canvas (above HTML overlay, for edge animations)
-  const edgeCanvas = document.createElement("canvas");
-  edgeCanvas.id = "edge-canvas";
-  Object.assign(edgeCanvas.style, {
-    position: "absolute",
-    top: "0",
-    left: "0",
-    pointerEvents: "none", // Pass through clicks
-    zIndex: "15", // Above HTML overlay (10), below port canvas (20)
-  });
-  mainArea.appendChild(edgeCanvas);
-
-  // Create edge renderer (shares transform with main renderer)
-  const edgeRenderer = new CanvasRenderer(edgeCanvas, { theme, registry });
-  // Sync transform properties with main renderer
-  Object.defineProperty(edgeRenderer, 'scale', {
-    get() { return renderer.scale; },
-    set(v) { renderer.scale = v; }
-  });
-  Object.defineProperty(edgeRenderer, 'offsetX', {
-    get() { return renderer.offsetX; },
-    set(v) { renderer.offsetX = v; }
-  });
-  Object.defineProperty(edgeRenderer, 'offsetY', {
-    get() { return renderer.offsetY; },
-    set(v) { renderer.offsetY = v; }
-  });
+  // No separate edge canvas — edges are drawn on the main renderer canvas to render behind nodes
+  const edgeRenderer = null;
 
   // Port Canvas (above HTML overlay)
   const portCanvas = document.createElement("canvas");
@@ -150,7 +125,7 @@ export function createGraphEditor(
     top: "0",
     left: "0",
     pointerEvents: "none", // Pass through clicks
-    zIndex: "20", // Above edge canvas (15)
+    zIndex: "20", // Above HTML overlay
   });
   mainArea.appendChild(portCanvas);
 
@@ -169,11 +144,11 @@ export function createGraphEditor(
   // Icon manager (shared between renderer and controller)
   const icons = new IconManager();
   renderer.iconManager = icons;
-  edgeRenderer.iconManager = icons;
   controller.iconManager = icons;
 
   // Sub-graph panel — split-pane editor docked inside the container
   const subNodePanel = new SubNodePanel(mainArea, { registry, theme, iconManager: icons });
+  subNodePanel.parentController = controller;
   controller.subNodePanel = subNodePanel;
 
   // Create context menu after controller (needs commandStack)
@@ -279,13 +254,11 @@ export function createGraphEditor(
 
   // initial render & resize
   renderer.resize(canvas.clientWidth, canvas.clientHeight);
-  edgeRenderer.resize(canvas.clientWidth, canvas.clientHeight);
   portRenderer.resize(canvas.clientWidth, canvas.clientHeight);
   controller.render();
 
   const ro = new ResizeObserver(() => {
     renderer.resize(canvas.clientWidth, canvas.clientHeight);
-    edgeRenderer.resize(canvas.clientWidth, canvas.clientHeight);
     portRenderer.resize(canvas.clientWidth, canvas.clientHeight);
     controller.render();
   });
@@ -307,7 +280,7 @@ export function createGraphEditor(
     },
     graph,
     renderer,
-    edgeRenderer, // Expose edge renderer for style changes
+    edgeRenderer: renderer, // Expose main renderer for style changes and backwards compatibility
     controller, // Expose controller for snap-to-grid access
     runner, // Expose runner for trigger
     minimap, // Expose minimap
@@ -324,7 +297,9 @@ export function createGraphEditor(
     stop: () => runner.stop(),
     setEdgeStyle: (style) => {
       renderer.setEdgeStyle(style);
-      edgeRenderer.setEdgeStyle(style);
+    },
+    setSlotLayout: (mode) => {
+      controller.setSlotLayout(mode);
     },
     setExecutionMode: (mode) => {
       runner.setExecutionMode(mode);

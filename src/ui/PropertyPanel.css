@@ -107,7 +107,7 @@
 .section-title {
   font-size: 10px;
   font-weight: 700;
-  color: var(--color-text-muted);
+  color: rgba(200, 200, 230, 0.6);
   margin-bottom: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -249,6 +249,82 @@
   background: rgba(255, 255, 255, 0.04);
   border-radius: var(--radius-xs);
   font-family: var(--font-mono);
+}
+
+/* ── Port name inline edit ────────────────────────────────────── */
+.port-name-input {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 1px 4px;
+  min-width: 0;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.port-name-input:hover {
+  border-color: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+}
+.port-name-input:focus {
+  outline: none;
+  border-color: rgba(99,179,237,0.45);
+  background: rgba(99,179,237,0.06);
+  color: #e2e8f0;
+}
+
+/* ── SubGraph action button ───────────────────────────────────── */
+.sg-open-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 13px;
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-main);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+  text-align: left;
+}
+
+.sg-open-btn.sg-btn-open {
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  color: #a78bfa;
+}
+
+.sg-open-btn.sg-btn-open:hover {
+  background: rgba(124, 58, 237, 0.22);
+  border-color: rgba(124, 58, 237, 0.55);
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.18);
+  color: #c4b5fd;
+}
+
+.sg-open-btn.sg-btn-close {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  color: #fca5a5;
+}
+
+.sg-open-btn.sg-btn-close:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fecaca;
+}
+
+.sg-btn-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.sg-btn-label {
+  flex: 1;
 }
 
 /* ── Panel Actions ────────────────────────────────────────────── */
@@ -436,7 +512,7 @@
   width: 34px;
   height: 18px;
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 9px;
+  border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: background 0.15s;
   flex-shrink: 0;

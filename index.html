@@ -40,7 +40,7 @@
       "author": { "@type": "Person", "name": "cheonghakim" },
       "license": "https://opensource.org/licenses/MIT",
       "programmingLanguage": "JavaScript",
-      "softwareVersion": "0.3.2"
+      "softwareVersion": "1.0.0"
     }
     </script>
 
@@ -53,54 +53,129 @@
   <body>
     <div id="wrap">
       <main class="content-root" id="graph-editor">
-        <div id="toolbar">
-          <!-- File operations -->
-          <button id="saveBtn" title="Save graph as JSON (Ctrl+S)">Save</button>
-          <button id="loadBtn" title="Load graph from JSON">Load</button>
+        <div id="menubar">
+          <!-- File menu -->
+          <div class="mb-group" id="mbFile">
+            <button class="mb-item">File</button>
+            <div class="mb-dropdown">
+              <div class="mb-dd-item" id="saveBtn">
+                <span>Save</span><span class="mb-shortcut">Ctrl+S</span>
+              </div>
+              <div class="mb-dd-item" id="loadBtn">
+                <span>Load</span>
+              </div>
+            </div>
+          </div>
 
-          <div class="toolbar-sep"></div>
+          <!-- Edit menu -->
+          <div class="mb-group" id="mbEdit">
+            <button class="mb-item">Edit</button>
+            <div class="mb-dropdown">
+              <div class="mb-dd-item" id="undoBtn">
+                <span>Undo</span><span class="mb-shortcut">Ctrl+Z</span>
+              </div>
+              <div class="mb-dd-item" id="redoBtn">
+                <span>Redo</span><span class="mb-shortcut">Ctrl+Y</span>
+              </div>
+              <div class="mb-dd-sep"></div>
+              <div class="mb-dd-item" id="copyBtn">
+                <span>Copy</span><span class="mb-shortcut">Ctrl+C</span>
+              </div>
+              <div class="mb-dd-item" id="pasteBtn">
+                <span>Paste</span><span class="mb-shortcut">Ctrl+V</span>
+              </div>
+              <div class="mb-dd-item" id="duplicateBtn">
+                <span>Duplicate</span><span class="mb-shortcut">Ctrl+D</span>
+              </div>
+              <div class="mb-dd-sep"></div>
+              <div class="mb-dd-item" id="selectAllBtn">
+                <span>Select All</span><span class="mb-shortcut">Ctrl+A</span>
+              </div>
+              <div class="mb-dd-item" id="deleteSelBtn">
+                <span>Delete Selected</span><span class="mb-shortcut">Del</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- View menu -->
+          <div class="mb-group" id="mbView">
+            <button class="mb-item">View</button>
+            <div class="mb-dropdown">
+              <div class="mb-dd-item" id="fitBtn">
+                <span>Fit to View</span><span class="mb-shortcut">F</span>
+              </div>
+              <div class="mb-dd-item" id="arrangeGridBtn">
+                <span>Arrange Grid</span><span class="mb-shortcut">L</span>
+              </div>
+              <div class="mb-dd-sep"></div>
+              <div class="mb-dd-item" id="searchBtn">
+                <span>Find Node</span><span class="mb-shortcut">Ctrl+K</span>
+              </div>
+              <div class="mb-dd-sep"></div>
+              <div class="mb-dd-item" id="zoomInBtn">
+                <span>Zoom In</span><span class="mb-shortcut">Ctrl++</span>
+              </div>
+              <div class="mb-dd-item" id="zoomOutBtn">
+                <span>Zoom Out</span><span class="mb-shortcut">Ctrl+−</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-sep"></div>
 
           <!-- Edge style -->
-          <label>
-            <span style="color: var(--color-text-disabled); font-size: 10px">Edges</span>
-            <select id="edgeStyleSelector">
+          <label class="mb-label-group">
+            <span class="mb-label">Edges</span>
+            <select id="edgeStyleSelector" class="mb-select">
               <option value="bezier">Curved</option>
               <option value="orthogonal" selected>Orthogonal</option>
               <option value="line">Straight</option>
             </select>
           </label>
 
-          <div class="toolbar-sep"></div>
+          <!-- Slots Layout -->
+          <label class="mb-label-group">
+            <span class="mb-label">Slots</span>
+            <select id="slotLayoutSelector" class="mb-select">
+              <option value="horizontal" selected>H</option>
+              <option value="vertical">V</option>
+            </select>
+          </label>
+
+          <div class="mb-sep"></div>
 
           <!-- Execution mode -->
           <div class="mode-toggle" id="modeToggle">
-            <button class="active" data-mode="run" title="Run — execute all nodes continuously">
-              Run
-            </button>
+            <button class="active" data-mode="run" title="Run — execute all nodes continuously">Run</button>
             <button data-mode="step" title="Step — execute one step at a time">Step</button>
           </div>
 
-          <div class="toolbar-sep"></div>
-
-          <!-- View controls -->
-          <button
-            id="fitBtn"
-            title="Fit all nodes into view (F)"
-            style="font-size: 12px; padding: 3px 8px"
-          >
-            Fit
-          </button>
-          <div class="zoom-controls">
-            <button id="zoomInBtn" title="Zoom in">+</button>
-            <button id="zoomOutBtn" title="Zoom out">−</button>
-          </div>
-
-          <div class="toolbar-sep"></div>
+          <div class="mb-sep"></div>
 
           <!-- Snap indicator -->
           <div class="indicator" id="snapIndicator" title="Toggle with G key">Snap</div>
         </div>
       </main>
+
+      <!-- Node Search Spotlight (Ctrl+K) -->
+      <div id="nodeSearch" class="node-search-overlay" role="dialog" aria-modal="true">
+        <div class="node-search-panel">
+          <div class="node-search-header">
+            <svg class="node-search-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M10 10L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <input id="nodeSearchInput" class="node-search-input" type="text" placeholder="Search nodes…" autocomplete="off" spellcheck="false" />
+            <span class="node-search-esc" id="nodeSearchClose">Esc</span>
+          </div>
+          <div id="nodeSearchResults" class="node-search-results"></div>
+          <div class="node-search-footer">
+            <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+            <span><kbd>↵</kbd> select</span>
+            <span><kbd>Esc</kbd> close</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script type="module">
@@ -123,6 +198,11 @@
       document.getElementById("edgeStyleSelector").addEventListener("change", (e) => {
         editor.setEdgeStyle(e.target.value);
         editor.render();
+      });
+
+      // ── Slots Layout ────────────────────────────────────────────
+      document.getElementById("slotLayoutSelector").addEventListener("change", (e) => {
+        editor.setSlotLayout(e.target.value);
       });
 
       // ── Execution mode ──────────────────────────────────────────
@@ -164,33 +244,56 @@
         editor.controller?.fitToView();
       });
 
-      // Ctrl+S shortcut for save
-      window.addEventListener("keydown", (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-          e.preventDefault();
-          document.getElementById("saveBtn").click();
-        }
+      // ── Grid Layout ─────────────────────────────────────────────
+      document.getElementById("arrangeGridBtn").addEventListener("click", () => {
+        editor.controller?.arrangeSelectionInGrid();
       });
 
       // ── Zoom buttons ────────────────────────────────────────────
       document.getElementById("zoomInBtn").addEventListener("click", () => {
         const r = editor.renderer;
-        const cx = r.canvas.width / 2;
-        const cy = r.canvas.height / 2;
-        r.zoomAt(1.2, cx, cy);
+        r.zoomAt(1.2, r.width / 2, r.height / 2);
         editor.render();
       });
 
       document.getElementById("zoomOutBtn").addEventListener("click", () => {
         const r = editor.renderer;
-        const cx = r.canvas.width / 2;
-        const cy = r.canvas.height / 2;
-        r.zoomAt(1 / 1.2, cx, cy);
+        r.zoomAt(1 / 1.2, r.width / 2, r.height / 2);
         editor.render();
       });
 
+      // ── Edit menu ───────────────────────────────────────────────
+      document.getElementById("undoBtn").addEventListener("click", () => {
+        editor.controller?.stack.undo();
+        editor.render();
+      });
+      document.getElementById("redoBtn").addEventListener("click", () => {
+        editor.controller?.stack.redo();
+        editor.render();
+      });
+      document.getElementById("copyBtn").addEventListener("click", () => {
+        editor.controller?._copySelection();
+      });
+      document.getElementById("pasteBtn").addEventListener("click", () => {
+        editor.controller?._pasteClipboard();
+      });
+      document.getElementById("duplicateBtn").addEventListener("click", () => {
+        editor.controller?._copySelection();
+        editor.controller?._pasteClipboard();
+      });
+      document.getElementById("selectAllBtn").addEventListener("click", () => {
+        const ctrl = editor.controller;
+        if (!ctrl) return;
+        ctrl.selection.clear();
+        for (const node of editor.graph.nodes.values()) ctrl.selection.add(node.id);
+        ctrl.render();
+      });
+      document.getElementById("deleteSelBtn").addEventListener("click", () => {
+        editor.controller?._deleteSelection();
+      });
+
       // ── Save / Load ─────────────────────────────────────────────
-      document.getElementById("saveBtn").addEventListener("click", () => {
+      function doSave() {
         const saved = editor.graph.toJSON();
         const blob = new Blob([JSON.stringify(saved, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
@@ -201,6 +304,16 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+      }
+
+      document.getElementById("saveBtn").addEventListener("click", doSave);
+
+      // Ctrl+S shortcut
+      window.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+          e.preventDefault();
+          doSave();
+        }
       });
 
       document.getElementById("loadBtn").addEventListener("click", () => {
@@ -267,6 +380,105 @@
           updateSnapIndicator();
         }
       }
+
+      // ── Node Search Spotlight (Ctrl+K) ──────────────────────────
+      const searchOverlay = document.getElementById("nodeSearch");
+      const searchInput   = document.getElementById("nodeSearchInput");
+      const searchResults = document.getElementById("nodeSearchResults");
+      let searchHlIdx = -1;
+
+      function openSearch() {
+        searchOverlay.classList.add("open");
+        searchInput.value = "";
+        searchHlIdx = -1;
+        renderSearchResults("");
+        setTimeout(() => searchInput.focus(), 0);
+      }
+
+      function closeSearch() {
+        searchOverlay.classList.remove("open");
+      }
+
+      function renderSearchResults(query) {
+        const q = query.toLowerCase().trim();
+        const all = [...editor.graph.nodes.values()].filter(n => n.type !== "core/Group");
+        const matches = q
+          ? all.filter(n => n.title.toLowerCase().includes(q) || n.type.toLowerCase().includes(q))
+          : all.slice(0, 8);
+
+        searchResults.innerHTML = "";
+        searchHlIdx = -1;
+
+        if (matches.length === 0) {
+          searchResults.innerHTML = '<div class="node-search-empty">No nodes found</div>';
+          return;
+        }
+
+        for (const node of matches) {
+          const def  = editor.registry.types.get(node.type);
+          const color = def?.color || "#555";
+          const item  = document.createElement("div");
+          item.className = "node-search-item";
+          item.dataset.nodeId = node.id;
+          item.innerHTML =
+            `<span class="node-search-dot" style="background:${color}"></span>` +
+            `<span class="node-search-title">${node.title}</span>` +
+            `<span class="node-search-type">${node.type.split("/").pop()}</span>`;
+          item.addEventListener("click", () => {
+            focusNode(node);
+            closeSearch();
+          });
+          searchResults.appendChild(item);
+        }
+      }
+
+      function focusNode(node) {
+        editor.graph.updateWorldTransforms();
+        editor.controller.selection.clear();
+        editor.controller.selection.add(node.id);
+        editor.controller._panToNode(node);
+        editor.render();
+      }
+
+      function updateHighlight() {
+        const items = searchResults.querySelectorAll(".node-search-item");
+        items.forEach((el, i) => el.classList.toggle("highlighted", i === searchHlIdx));
+        if (searchHlIdx >= 0) items[searchHlIdx]?.scrollIntoView({ block: "nearest" });
+      }
+
+      searchInput.addEventListener("input", e => renderSearchResults(e.target.value));
+
+      searchInput.addEventListener("keydown", e => {
+        const items = searchResults.querySelectorAll(".node-search-item");
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          searchHlIdx = Math.min(searchHlIdx + 1, items.length - 1);
+          updateHighlight();
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          searchHlIdx = Math.max(searchHlIdx - 1, 0);
+          updateHighlight();
+        } else if (e.key === "Enter") {
+          if (searchHlIdx >= 0) items[searchHlIdx]?.click();
+          else if (items.length > 0) items[0].click();
+        } else if (e.key === "Escape") {
+          closeSearch();
+        }
+      });
+
+      searchOverlay.addEventListener("click", e => {
+        if (e.target === searchOverlay) closeSearch();
+      });
+
+      document.getElementById("nodeSearchClose").addEventListener("click", closeSearch);
+      document.getElementById("searchBtn").addEventListener("click", openSearch);
+
+      window.addEventListener("keydown", e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+          e.preventDefault();
+          searchOverlay.classList.contains("open") ? closeSearch() : openSearch();
+        }
+      });
 
       loadExample();
     </script>

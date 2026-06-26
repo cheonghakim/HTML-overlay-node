@@ -1,3 +1,5 @@
+import { triggerSubGraphAnimation } from "./subgraph.js";
+
 // Duration each exec edge stays active during sequential animation (ms)
 const STEP_DURATION = 620;
 
@@ -51,44 +53,120 @@ export function registerUtilNodes(registry) {
           button.style.color = "#7080d8";
           button.style.background = "rgba(79,98,192,0.12)";
 
-          const { connectedEdges, execEdgeOrder } = runner.runOnce(node.id, 0);
+          const { connectedEdges, execEdgeOrder, executionSteps } = runner.runOnce(node.id, 0);
 
           controller.activeEdgeTimes = new Map();
 
-          if (execEdgeOrder.length > 0) {
-            // Sequential: animate one exec edge at a time
-            const startTime = performance.now();
-            const totalDuration = execEdgeOrder.length * STEP_DURATION + 80;
+          const steps = executionSteps || execEdgeOrder.map(edgeId => ({ nodeId: runner.graph.edges.get(edgeId)?.toNode, edgeId }));
 
-            const animate = () => {
-              const now = performance.now();
-              const elapsed = now - startTime;
-              const step = Math.floor(elapsed / STEP_DURATION);
+          if (steps.length > 0) {
+            // Sequential step-based animation: each step waits for sub-graph before advancing
+            const runStep = (stepIdx) => {
+              if (stepIdx >= steps.length) {
+                _resetTrigger(controller, node, button);
+                return;
+              }
 
+              const s = steps[stepIdx];
               const activeNow = new Set();
               const activeNodeNow = new Set();
-              if (step < execEdgeOrder.length) {
-                const edgeId = execEdgeOrder[step];
-                activeNow.add(edgeId);
-                if (!controller.activeEdgeTimes.has(edgeId)) {
-                  controller.activeEdgeTimes.set(edgeId, startTime + step * STEP_DURATION);
+
+              if (s.nodeId) activeNodeNow.add(s.nodeId);
+              // Show the OUTGOING edge (= next step's incoming edge) together with this node.
+              // Skip if the next step is the SAME node — that means it's a repeated step
+              // for a data-dependency edge, and its edgeId is the incoming exec edge to this
+              // node (not an outgoing edge), which would cause a duplicate highlight.
+              const nextStep = steps[stepIdx + 1];
+              const outEdgeId = (nextStep && nextStep.nodeId !== s.nodeId) ? nextStep.edgeId : undefined;
+              if (outEdgeId) {
+                activeNow.add(outEdgeId);
+                if (!controller.activeEdgeTimes.has(outEdgeId)) {
+                  controller.activeEdgeTimes.set(outEdgeId, performance.now());
                 }
-                // Highlight the destination node of this exec edge
-                const edge = runner.graph.edges.get(edgeId);
-                if (edge?.toNode) activeNodeNow.add(edge.toNode);
               }
 
-              controller.activeEdges = activeNow;
-              controller.activeNodes = activeNodeNow;
-              controller.render();
+              // Check whether this step involves an open sub-graph panel
+              const nodeObj = s.nodeId ? runner.graph.nodes.get(s.nodeId) : null;
+              const subPanel = runner.graph?.controller?.subNodePanel;
+              const hasOpenSubPanel = nodeObj?.type === 'util/SubGraph' && subPanel?.isOpenFor(nodeObj.id);
 
-              if (elapsed < totalDuration) {
-                requestAnimationFrame(animate);
+
+              if (hasOpenSubPanel) {
+                // steps[stepIdx+1].edgeId is unreliable for SubGraph because Runner inserts
+                // data-dependency steps (edgeId=null) between exec steps. Find the exec
+                // outgoing edge directly from the graph instead.
+                const sgExecPort = nodeObj.outputs.find(p => p.portType === 'exec');
+                let subOutEdgeId = null;
+                if (sgExecPort) {
+                  for (const edge of runner.graph.edges.values()) {
+                    if (edge.fromNode === nodeObj.id && edge.fromPort === sgExecPort.id) {
+                      subOutEdgeId = edge.id;
+                      break;
+                    }
+                  }
+                }
+                const subActiveNow = new Set();
+                if (subOutEdgeId) subActiveNow.add(subOutEdgeId);
+
+                controller.activeEdges = new Set();
+                controller.activeNodes = activeNodeNow;
+                if (subOutEdgeId) controller.activeEdgeTimes.delete(subOutEdgeId);
+
+                // Primary signal: onComplete callback from animateInPanel
+                let subDone = false;
+                triggerSubGraphAnimation(nodeObj, runner.graph, performance.now(), () => {
+                  subDone = true;
+                });
+
+                // Fallback timeout in case onComplete never fires
+                const subResult = nodeObj._subGraphResult;
+                const subSteps  = subResult?.executionSteps || [];
+                const subEnd = performance.now() +
+                  (subSteps.length > 0 ? subSteps.length * STEP_DURATION + 300 : STEP_DURATION + 300);
+
+                // Render loop: keeps main canvas alive during sub-animation.
+                // Transitions to post-glow once sub-animation signals done.
+                const subRender = () => {
+                  controller.render(performance.now());
+                  if (!subDone && performance.now() < subEnd) {
+                    requestAnimationFrame(subRender);
+                  } else {
+                    // Post-glow: SubGraph node + its exec outgoing edge for STEP_DURATION
+                    if (subOutEdgeId) controller.activeEdgeTimes.set(subOutEdgeId, performance.now());
+                    controller.activeEdges = subActiveNow;
+                    controller.activeNodes = activeNodeNow;
+                    const postEnd = performance.now() + STEP_DURATION;
+                    const postRaf = () => {
+                      controller.render(performance.now());
+                      if (performance.now() < postEnd) {
+                        requestAnimationFrame(postRaf);
+                      } else {
+                        runStep(stepIdx + 1);
+                      }
+                    };
+                    requestAnimationFrame(postRaf);
+                  }
+                };
+                requestAnimationFrame(subRender);
               } else {
-                _resetTrigger(controller, node, button);
+                // Normal step: show edge/node active for STEP_DURATION then advance
+                controller.activeEdges = activeNow;
+                controller.activeNodes = activeNodeNow;
+
+                const stepEnd = performance.now() + STEP_DURATION;
+                const stepRaf = () => {
+                  controller.render(performance.now());
+                  if (performance.now() < stepEnd) {
+                    requestAnimationFrame(stepRaf);
+                  } else {
+                    runStep(stepIdx + 1);
+                  }
+                };
+                requestAnimationFrame(stepRaf);
               }
             };
-            requestAnimationFrame(animate);
+
+            runStep(0);
           } else if (connectedEdges.size > 0) {
             // Fallback: all data edges at once
             const startTime = performance.now();

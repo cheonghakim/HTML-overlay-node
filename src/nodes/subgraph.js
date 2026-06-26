@@ -42,52 +42,90 @@ function findEntryNode(graph) {
 }
 
 /** Animate exec-edge traversal sequentially in the sub-panel controller. */
-function animateInPanel(subCtrl, execEdgeOrder, connectedNodes, graph, startTime = performance.now()) {
-  const totalDuration = execEdgeOrder.length * STEP_DURATION + 80;
+export function animateInPanel(subCtrl, executionSteps, execEdgeOrder, _connectedNodes, _graph, _startTime = performance.now(), onComplete = null) {
+  const steps = executionSteps || execEdgeOrder.map(edgeId => ({ nodeId: _graph.edges.get(edgeId)?.toNode, edgeId }));
 
   subCtrl.activeEdgeTimes = new Map();
 
-  const tick = () => {
-    const now = performance.now();
-    const elapsed = now - startTime;
-    const step = Math.floor(elapsed / STEP_DURATION);
-
-    const activeEdgeNow = new Set();
-    const activeNodeNow = new Set();
-
-    if (step < execEdgeOrder.length) {
-      const edgeId = execEdgeOrder[step];
-      activeEdgeNow.add(edgeId);
-      if (!subCtrl.activeEdgeTimes.has(edgeId)) {
-        subCtrl.activeEdgeTimes.set(edgeId, startTime + step * STEP_DURATION);
-      }
-      const edge = graph.edges.get(edgeId);
-      if (edge?.toNode) activeNodeNow.add(edge.toNode);
-    }
-
-    subCtrl.activeEdges = activeEdgeNow;
-    subCtrl.activeNodes = activeNodeNow;
-    subCtrl.render();
-
-    if (elapsed < totalDuration) {
-      requestAnimationFrame(tick);
-    } else {
+  const runSubStep = (stepIdx) => {
+    if (stepIdx >= steps.length) {
       subCtrl.activeEdges = new Set();
       subCtrl.activeNodes = new Set();
       subCtrl.activeEdgeTimes = new Map();
       subCtrl.render();
+      onComplete?.();
+      return;
     }
+
+    const s = steps[stepIdx];
+    const activeEdgeNow = new Set();
+    const activeNodeNow = new Set();
+
+    if (s.nodeId) activeNodeNow.add(s.nodeId);
+    // Show outgoing edge (next step's incoming = current node's outgoing)
+    const outEdgeId = steps[stepIdx + 1]?.edgeId;
+    if (outEdgeId) {
+      activeEdgeNow.add(outEdgeId);
+      if (!subCtrl.activeEdgeTimes.has(outEdgeId)) {
+        subCtrl.activeEdgeTimes.set(outEdgeId, performance.now());
+      }
+    }
+
+    subCtrl.activeEdges = activeEdgeNow;
+    subCtrl.activeNodes = activeNodeNow;
+
+    const stepEnd = performance.now() + STEP_DURATION;
+    const stepRaf = () => {
+      subCtrl.render(performance.now());
+      if (performance.now() < stepEnd) {
+        requestAnimationFrame(stepRaf);
+      } else {
+        runSubStep(stepIdx + 1);
+      }
+    };
+    requestAnimationFrame(stepRaf);
   };
 
-  requestAnimationFrame(tick);
+  runSubStep(0);
+}
+
+/** Trigger nested sub-graph animation. */
+export function triggerSubGraphAnimation(node, mainGraph, startTime = performance.now(), onComplete = null) {
+  const subPanel = mainGraph?.controller?.subNodePanel;
+  if (!subPanel || !subPanel.isOpenFor(node.id) || !subPanel._controller) return;
+
+  const result = node._subGraphResult;
+  if (!result) return;
+
+  const subCtrl = subPanel._controller;
+  const steps = result.executionSteps || [];
+  if (steps.length > 0 || result.execEdgeOrder?.length > 0) {
+    animateInPanel(subCtrl, result.executionSteps, result.execEdgeOrder, result.connectedNodes, subPanel._graph, startTime, onComplete);
+  } else if (result.connectedEdges?.size > 0) {
+    // Data-only flow: light everything at once
+    subCtrl.activeEdges = result.connectedEdges;
+    subCtrl.activeNodes = result.connectedNodes;
+    const now = performance.now();
+    subCtrl.activeEdgeTimes = new Map();
+    for (const id of result.connectedEdges) subCtrl.activeEdgeTimes.set(id, now);
+    subCtrl.render();
+    setTimeout(() => {
+      subCtrl.activeEdges = new Set();
+      subCtrl.activeNodes = new Set();
+      subCtrl.render();
+      onComplete?.();
+    }, 800);
+  } else {
+    onComplete?.();
+  }
 }
 
 export function registerSubGraphNodes(registry) {
   registry.register("util/SubGraph", {
     title: "Sub Graph",
     color: "#7c3aed",
-    icon: "expand",
-    size: { w: 170 },
+    icon: "subgraph",
+    size: { w: 170, h: 76 },
     inputs:  [{ name: "", portType: "exec" }],
     outputs: [{ name: "", portType: "exec" }],
 
@@ -99,6 +137,56 @@ export function registerSubGraphNodes(registry) {
           nodes: [], edges: [],
         };
       }
+    },
+
+    html: {
+      init(node, el, { body, graph }) {
+        el.classList.add('node-overlay');
+        Object.assign(body.style, {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '8px 10px',
+        });
+
+        const btn = document.createElement('button');
+        btn.className = 'premium-button';
+        Object.assign(btn.style, {
+          width: '100%',
+          fontSize: '10px',
+          letterSpacing: '0.6px',
+          textTransform: 'uppercase',
+        });
+        btn.textContent = '▶  Open Sub-Playbook';
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const panel = graph?.controller?.subNodePanel;
+          if (!panel) return;
+          panel.toggle(node, node.state.subGraphData, ['메인 그래프', node.title]);
+        });
+
+        body.appendChild(btn);
+        el._graphRef = graph;
+        el._openBtn = btn;
+      },
+
+      update(node, el) {
+        if (!el._openBtn || !el._graphRef) return;
+        const panel = el._graphRef?.controller?.subNodePanel;
+        if (!panel) {
+          el._openBtn.style.opacity = '0.4';
+          el._openBtn.style.pointerEvents = 'none';
+          return;
+        }
+        el._openBtn.style.opacity = '';
+        el._openBtn.style.pointerEvents = '';
+        const isOpen = panel.isOpenFor(node.id);
+        el._openBtn.textContent = isOpen ? '▼  Close Sub-Playbook' : '▶  Open Sub-Playbook';
+        el._openBtn.style.background = isOpen ? 'rgba(124,58,237,0.22)' : '';
+        el._openBtn.style.borderColor = isOpen ? 'rgba(124,58,237,0.55)' : '';
+        el._openBtn.style.color = isOpen ? '#a78bfa' : '';
+      },
     },
 
     onExecute(node, { setOutput, graph: mainGraph }) {
@@ -144,30 +232,7 @@ export function registerSubGraphNodes(registry) {
       if (!entryId) { setOutput("", true); return; }
 
       const result = execRunner.runOnce(entryId, 0);
-
-      // ── Animate in panel ─────────────────────────────────────────
-      // Capture start time here so sub-graph animation is aligned with
-      // the outer animation (both start when the trigger fires).
-      if (panelOpen && subPanel._controller) {
-        const subCtrl = subPanel._controller;
-        if (result.execEdgeOrder?.length > 0) {
-          // Pass a shared startTime so the outer and inner animations are in sync
-          animateInPanel(subCtrl, result.execEdgeOrder, result.connectedNodes, execGraph, performance.now());
-        } else if (result.connectedEdges?.size > 0) {
-          // Data-only flow: light everything at once
-          subCtrl.activeEdges = result.connectedEdges;
-          subCtrl.activeNodes = result.connectedNodes;
-          const now = performance.now();
-          subCtrl.activeEdgeTimes = new Map();
-          for (const id of result.connectedEdges) subCtrl.activeEdgeTimes.set(id, now);
-          subCtrl.render();
-          setTimeout(() => {
-            subCtrl.activeEdges = new Set();
-            subCtrl.activeNodes = new Set();
-            subCtrl.render();
-          }, 800);
-        }
-      }
+      node._subGraphResult = result;
 
       setOutput("", true);
     },

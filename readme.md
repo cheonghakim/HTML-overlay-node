@@ -42,9 +42,13 @@ Traditional node editors force a hard choice:
 | Feature | 기능 |
 |:--------|:-----|
 | Hybrid Canvas + HTML rendering | 하이브리드 Canvas + HTML 렌더링 |
+| **HiDPI / Retina support** | **모든 디스플레이에서 선명한 렌더링** |
 | Emerald signal flow animation | 에메랄드 신호 흐름 시각화 |
 | Interactive minimap (drag & click) | 드래그/클릭 가능한 인터랙티브 미니맵 |
 | Full undo / redo (Ctrl+Z / Ctrl+Y) | 완전한 실행 취소/재실행 |
+| **Edit menu** (Undo, Copy, Paste, Duplicate, Delete…) | **편집 메뉴** (실행취소, 복사, 붙여넣기, 복제, 삭제…) |
+| **Node search spotlight (Ctrl+K)** | **노드 검색 스포트라이트 (Ctrl+K)** |
+| **Tab / Shift+Tab node navigation** | **Tab으로 노드 순환 탐색** |
 | Grid snap (G key) | 정밀 그리드 스냅 |
 | Node grouping (Ctrl+G) | 노드 그룹화 |
 | Copy / Paste / Duplicate | 복사 / 붙여넣기 / 복제 |
@@ -54,6 +58,7 @@ Traditional node editors force a hard choice:
 | Sub-graph editor (nested graphs) | 서브 그래프 에디터 (중첩 그래프) |
 | Read-only mode | 읽기 전용 모드 |
 | Run / Step execution modes | Run / Step 실행 모드 |
+| Schema migration chain | 선언적 스키마 버전 마이그레이션 |
 | Plugin API | 플러그인 API |
 | TypeScript declarations | TypeScript 타입 선언 |
 | Zero dependencies | 제로 외부 의존성 |
@@ -600,6 +605,14 @@ Edges rendered in orthogonal style show a small label at the midpoint. Port name
 | Duplicate | `Ctrl + D` | 복제 |
 | Group | `Ctrl + G` | 그룹화 |
 | Ungroup | `Ctrl + Shift + G` | 그룹 해제 |
+
+### Navigation / 탐색
+
+| Action | Shortcut | 동작 |
+|:-------|:---------|:-----|
+| **Find node** | **`Ctrl + K`** | **노드 검색 스포트라이트 열기** |
+| **Next node** | **`Tab`** | **다음 노드로 포커스 이동** |
+| **Previous node** | **`Shift + Tab`** | **이전 노드로 포커스 이동** |
 
 ### View / 뷰
 

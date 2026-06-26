@@ -126,12 +126,32 @@ export class HtmlOverlay {
     this._observers.set(node.id, obs);
   }
 
+  /**
+   * 뷰포트 컬링 기준값.
+   * LOD_HIDE_HTML: 이 배율 미만에서는 HTML 오버레이 전체 숨김 (캔버스 전용 렌더)
+   */
+  static LOD_HIDE_HTML = 0.35;
+
   /** 그래프와 변환 동기화하여 렌더링 */
   draw(graph, selection = new Set()) {
     // 컨테이너 전체에 월드 변환 적용 (CSS 픽셀 기준)
     const { scale, offsetX, offsetY } = this.renderer;
     this.container.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
     this.container.style.transformOrigin = "0 0";
+
+    // LOD: 줌이 너무 낮으면 HTML 오버레이 전체 숨기고 조기 종료
+    if (scale < HtmlOverlay.LOD_HIDE_HTML) {
+      for (const el of this.nodes.values()) el.style.display = "none";
+      if (this._stepBtn) this._stepBtn.style.display = "none";
+      return;
+    }
+
+    // 뷰포트 범위 (월드 좌표, 여유 margin 포함) — 논리(CSS) 픽셀 기준
+    const margin = 100 / scale;
+    const vLeft   = -offsetX / scale - margin;
+    const vTop    = -offsetY / scale - margin;
+    const vRight  = vLeft + this.renderer.width  / scale + margin * 2;
+    const vBottom = vTop  + this.renderer.height / scale + margin * 2;
 
     const seen = new Set();
 
@@ -145,7 +165,17 @@ export class HtmlOverlay {
       const el = this._ensureNodeElement(node, def, graph);
       if (!el) continue;
 
-      // 노드 위치/크기 동기화 (월드 좌표 → 컨테이너 내부는 이미 scale/translate 적용)
+      // 뷰포트 컬링: 완전히 밖에 있으면 DOM에서 숨김
+      const { x, y, w, h } = node.computed;
+      const inView = x < vRight && x + w > vLeft && y < vBottom && y + h > vTop;
+      if (!inView) {
+        el.style.display = "none";
+        seen.add(node.id);
+        continue;
+      }
+
+      // 뷰포트 안: 표시 복원 + 위치 동기화
+      el.style.display = "";
       el.style.left = `${node.computed.x}px`;
       el.style.top = `${node.computed.y}px`;
       el.style.width = `${node.computed.w}px`;
@@ -198,29 +228,36 @@ export class HtmlOverlay {
     if (!this._stepBtn) {
       this._stepBtn = document.createElement("button");
       this._stepBtn.className = "step-play-button";
-      this._stepBtn.innerHTML = "▶";
+      this._stepBtn.innerHTML = `
+        <svg width="6" height="8" viewBox="0 0 6 8" fill="currentColor" style="display: block; margin-left: 1px;">
+          <path d="M0 0 L6 4 L0 8 Z" />
+        </svg>
+      `;
       Object.assign(this._stepBtn.style, {
         position: "absolute",
         zIndex: "100",
-        width: "20px",
-        height: "20px",
+        width: "16px",
+        height: "16px",
         borderRadius: "4px",
         border: "none",
-        background: "transparent",
-        color: "white",
-        fontSize: "12px",
+        background: "rgba(255, 255, 255, 0.12)",
+        color: "#34d399",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        // boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
         pointerEvents: "auto",
-        transition: "transform 0.1s, background 0.2s",
+        transition: "transform 0.1s, background 0.15s, color 0.15s",
+        padding: "0",
       });
-      this._stepBtn.addEventListener("mouseover", () => {
-        this._stepBtn.style.transform = "scale(1)";
+      this._stepBtn.addEventListener("mouseenter", () => {
+        this._stepBtn.style.background = "rgba(52, 211, 153, 0.25)";
+        this._stepBtn.style.color = "#a7f3d0";
+        this._stepBtn.style.transform = "scale(1.08)";
       });
-      this._stepBtn.addEventListener("mouseout", () => {
+      this._stepBtn.addEventListener("mouseleave", () => {
+        this._stepBtn.style.background = "rgba(255, 255, 255, 0.12)";
+        this._stepBtn.style.color = "#34d399";
         this._stepBtn.style.transform = "scale(1)";
       });
       this._stepBtn.addEventListener("click", (e) => {
@@ -232,8 +269,8 @@ export class HtmlOverlay {
 
     // Position the button in the top-right corner of the node (header area)
     this._stepBtn.style.display = "flex";
-    this._stepBtn.style.left = `${node.computed.x + node.computed.w - 26}px`;
-    this._stepBtn.style.top = `${node.computed.y + 2}px`;
+    this._stepBtn.style.left = `${node.computed.x + node.computed.w - 24}px`;
+    this._stepBtn.style.top = `${node.computed.y + 3}px`;
   }
 
   /**
