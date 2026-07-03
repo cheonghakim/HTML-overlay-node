@@ -384,6 +384,21 @@ export class Controller {
       return;
     }
 
+    // Rank-based auto layout: Alt + H (horizontal), Alt + V (vertical)
+    if (e.altKey && !e.ctrlKey && !e.metaKey) {
+      const key = e.key.toLowerCase();
+      if (key === "h") {
+        e.preventDefault();
+        this.arrangeRankLayout("horizontal");
+        return;
+      }
+      if (key === "v") {
+        e.preventDefault();
+        this.arrangeRankLayout("vertical");
+        return;
+      }
+    }
+
     // Fit to view: F
     if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
       this.fitToView();
@@ -1770,6 +1785,198 @@ export class Controller {
       
       commands.push({ node, fromPos, toPos });
     });
+
+    if (commands.length > 0) {
+      this.stack.exec(MoveNodesCmd(commands));
+    }
+
+    this.graph.updateWorldTransforms();
+    this.render();
+  }
+
+  arrangeRankLayout(direction = "horizontal", spacingX = 240, spacingY = 140) {
+    const nodes = Array.from(this.graph.nodes.values()).filter(n => n.type !== "core/Group");
+    if (nodes.length === 0) return;
+
+    // 1. Map of nodeId -> list of parent nodeIds
+    const parentsMap = new Map();
+    for (const n of nodes) {
+      parentsMap.set(n.id, []);
+    }
+
+    for (const e of this.graph.edges.values()) {
+      if (parentsMap.has(e.toNode) && parentsMap.has(e.fromNode)) {
+        parentsMap.get(e.toNode).push(e.fromNode);
+      }
+    }
+
+    // 2. Compute ranks using recursive DFS with cycle-detection
+    const ranks = new Map();
+    const visiting = new Set();
+
+    const computeRank = (nodeId) => {
+      if (ranks.has(nodeId)) return ranks.get(nodeId);
+      if (visiting.has(nodeId)) {
+        // Cycle detected, break the cycle by assigning rank 0 dynamically
+        return 0;
+      }
+      visiting.add(nodeId);
+
+      let maxParentRank = -1;
+      const parents = parentsMap.get(nodeId) || [];
+      for (const pId of parents) {
+        const pRank = computeRank(pId);
+        maxParentRank = Math.max(maxParentRank, pRank);
+      }
+
+      visiting.delete(nodeId);
+      const rank = maxParentRank + 1;
+      ranks.set(nodeId, rank);
+      return rank;
+    };
+
+    for (const n of nodes) {
+      computeRank(n.id);
+    }
+
+    // 2b. Map of nodeId -> list of child nodeIds for backward rank pass
+    const childrenMap = new Map();
+    for (const n of nodes) {
+      childrenMap.set(n.id, []);
+    }
+    for (const e of this.graph.edges.values()) {
+      if (childrenMap.has(e.fromNode) && childrenMap.has(e.toNode)) {
+        childrenMap.get(e.fromNode).push(e.toNode);
+      }
+    }
+
+    const finalRanks = new Map();
+    const visitingBackward = new Set();
+
+    const computeBackwardRank = (nodeId) => {
+      if (finalRanks.has(nodeId)) return finalRanks.get(nodeId);
+      if (visitingBackward.has(nodeId)) {
+        // Cycle loop fallback: use forward rank
+        return ranks.get(nodeId) ?? 0;
+      }
+      visitingBackward.add(nodeId);
+
+      const children = childrenMap.get(nodeId) || [];
+      if (children.length === 0) {
+        const r = ranks.get(nodeId) ?? 0;
+        finalRanks.set(nodeId, r);
+        visitingBackward.delete(nodeId);
+        return r;
+      }
+
+      let minChildRank = Infinity;
+      for (const cId of children) {
+        const cRank = computeBackwardRank(cId);
+        minChildRank = Math.min(minChildRank, cRank);
+      }
+
+      visitingBackward.delete(nodeId);
+      const forwardRank = ranks.get(nodeId) ?? 0;
+      const r = Math.max(forwardRank, minChildRank - 1);
+      finalRanks.set(nodeId, r);
+      return r;
+    };
+
+    for (const n of nodes) {
+      computeBackwardRank(n.id);
+    }
+
+    // 3. Group nodes by rank
+    const rankGroups = new Map();
+    for (const n of nodes) {
+      const r = finalRanks.get(n.id) ?? 0;
+      if (!rankGroups.has(r)) {
+        rankGroups.set(r, []);
+      }
+      rankGroups.get(r).push(n.id);
+    }
+
+    // Sort nodes in each rank based on their original positions to keep layout stable
+    const sortedRanks = Array.from(rankGroups.keys()).sort((a, b) => a - b);
+    for (const r of sortedRanks) {
+      const ids = rankGroups.get(r);
+      ids.sort((a, b) => {
+        const nodeA = this.graph.nodes.get(a);
+        const nodeB = this.graph.nodes.get(b);
+        if (direction === 'horizontal') {
+          return nodeA.pos.y - nodeB.pos.y;
+        } else {
+          return nodeA.pos.x - nodeB.pos.x;
+        }
+      });
+    }
+
+    // Calculate existing graph center in world coordinates.
+    // n.pos is parent-local — must use computed world positions so that nodes inside
+    // groups and root-level nodes are measured in the same coordinate space.
+    this.graph.updateWorldTransforms();
+    const origCenterX = nodes.reduce((s, n) => s + (n.computed?.x ?? n.pos.x), 0) / nodes.length;
+    const origCenterY = nodes.reduce((s, n) => s + (n.computed?.y ?? n.pos.y), 0) / nodes.length;
+
+    const commands = [];
+
+    // 4. Calculate targets and populate commands
+    if (direction === 'horizontal') {
+      const layoutWidth = (sortedRanks.length - 1) * spacingX;
+      const startX = origCenterX - layoutWidth / 2;
+
+      sortedRanks.forEach((r, colIndex) => {
+        const ids = rankGroups.get(r);
+        const colX = startX + colIndex * spacingX;
+        const colHeight = (ids.length - 1) * spacingY;
+        const startY = origCenterY - colHeight / 2;
+
+        ids.forEach((id, nodeIndex) => {
+          const node = this.graph.nodes.get(id);
+          const parentX = node.parent ? node.parent.computed.x : 0;
+          const parentY = node.parent ? node.parent.computed.y : 0;
+          const targetX = colX - parentX;
+          const targetY = (startY + nodeIndex * spacingY) - parentY;
+
+          commands.push({
+            node,
+            fromPos: { x: node.pos.x, y: node.pos.y },
+            toPos: { x: targetX, y: targetY }
+          });
+
+          // Set positions directly for command execution
+          node.pos.x = targetX;
+          node.pos.y = targetY;
+        });
+      });
+    } else {
+      const layoutHeight = (sortedRanks.length - 1) * spacingY;
+      const startY = origCenterY - layoutHeight / 2;
+
+      sortedRanks.forEach((r, rowIndex) => {
+        const ids = rankGroups.get(r);
+        const rowY = startY + rowIndex * spacingY;
+        const rowWidth = (ids.length - 1) * spacingX;
+        const startX = origCenterX - rowWidth / 2;
+
+        ids.forEach((id, nodeIndex) => {
+          const node = this.graph.nodes.get(id);
+          const parentX = node.parent ? node.parent.computed.x : 0;
+          const parentY = node.parent ? node.parent.computed.y : 0;
+          const targetX = (startX + nodeIndex * spacingX) - parentX;
+          const targetY = rowY - parentY;
+
+          commands.push({
+            node,
+            fromPos: { x: node.pos.x, y: node.pos.y },
+            toPos: { x: targetX, y: targetY }
+          });
+
+          node.pos.x = targetX;
+          node.pos.y = targetY;
+        });
+      });
+    }
 
     if (commands.length > 0) {
       this.stack.exec(MoveNodesCmd(commands));

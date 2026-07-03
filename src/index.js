@@ -258,11 +258,13 @@ export function createGraphEditor(
   controller.render();
 
   const ro = new ResizeObserver(() => {
-    renderer.resize(canvas.clientWidth, canvas.clientHeight);
-    portRenderer.resize(canvas.clientWidth, canvas.clientHeight);
+    const w = mainArea.clientWidth;
+    const h = mainArea.clientHeight;
+    renderer.resize(w, h);
+    portRenderer.resize(w, h);
     controller.render();
   });
-  ro.observe(canvas);
+  ro.observe(mainArea);
 
   // Wrap controller.render to update minimap
   const originalRender = controller.render.bind(controller);

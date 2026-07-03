@@ -107,6 +107,12 @@
               <div class="mb-dd-item" id="arrangeGridBtn">
                 <span>Arrange Grid</span><span class="mb-shortcut">L</span>
               </div>
+              <div class="mb-dd-item" id="arrangeRankHBtn">
+                <span>Arrange Horizontal</span><span class="mb-shortcut">Alt+H</span>
+              </div>
+              <div class="mb-dd-item" id="arrangeRankVBtn">
+                <span>Arrange Vertical</span><span class="mb-shortcut">Alt+V</span>
+              </div>
               <div class="mb-dd-sep"></div>
               <div class="mb-dd-item" id="searchBtn">
                 <span>Find Node</span><span class="mb-shortcut">Ctrl+K</span>
@@ -249,6 +255,14 @@
         editor.controller?.arrangeSelectionInGrid();
       });
 
+      // ── Rank Layouts ────────────────────────────────────────────
+      document.getElementById("arrangeRankHBtn").addEventListener("click", () => {
+        editor.controller?.arrangeRankLayout("horizontal");
+      });
+      document.getElementById("arrangeRankVBtn").addEventListener("click", () => {
+        editor.controller?.arrangeRankLayout("vertical");
+      });
+
       // ── Zoom buttons ────────────────────────────────────────────
       document.getElementById("zoomInBtn").addEventListener("click", () => {
         const r = editor.renderer;
@@ -352,9 +366,9 @@
           const json = await res.json();
           editor.graph.fromJSON(json);
 
-          // Frame 1: open sub-panel so mainArea shrinks before fitToView.
-          // Frame 2: ResizeObserver has updated canvas dimensions → fitToView
-          // uses the correct (reduced) height and centers nodes in visible area.
+          // Frame 1: open sub-panel → mainArea CSS shrinks (right-docked).
+          // Frame 2: ResizeObserver fires → canvas dimensions updated.
+          // Frame 3: fitToView uses the final (narrowed) canvas size.
           requestAnimationFrame(() => {
             try {
               const sgNode = editor.graph.nodes.get("n-sg");
@@ -368,8 +382,10 @@
               console.warn("[loadExample] sub-panel open failed:", err);
             }
             requestAnimationFrame(() => {
-              editor.controller?.fitToView({ padding: 80, maxScale: 1.0 });
-              updateSnapIndicator();
+              requestAnimationFrame(() => {
+                editor.controller?.fitToView({ padding: 80, maxScale: 1.0 });
+                updateSnapIndicator();
+              });
             });
           });
         } catch (err) {

@@ -72,6 +72,10 @@ export class CanvasRenderer {
     this.registry = reg;
   }
   resize(w, h) {
+    // Skip degenerate resize (element hidden / display:none → clientWidth=0).
+    // Without this guard, setting style.width="0px" locks the canvas at 0 even
+    // after the element becomes visible again, breaking re-open of SubGraphPanel.
+    if (!w || !h) return;
     const dpr = window.devicePixelRatio || 1;
     this._dpr = dpr;
     this._logicalW = w;
@@ -201,11 +205,11 @@ export class CanvasRenderer {
 
       const vig = ctx.createRadialGradient(
         W * 0.5, H * 0.5, Math.min(W, H) * 0.05,
-        W * 0.5, H * 0.5, Math.max(W, H) * 0.82
+        W * 0.5, H * 0.5, Math.max(W, H) * 0.90
       );
-      vig.addColorStop(0,   "rgba(255,255,255,0.012)");
-      vig.addColorStop(0.5, "rgba(255,255,255,0)");
-      vig.addColorStop(1,   "rgba(0,0,0,0.13)");
+      vig.addColorStop(0,   "rgba(255,255,255,0.006)");
+      vig.addColorStop(0.6, "rgba(255,255,255,0)");
+      vig.addColorStop(1,   "rgba(0,0,0,0.055)");
       this._gridGradientCache = { bg, vig };
     }
     ctx.fillStyle = this._gridGradientCache.bg;
