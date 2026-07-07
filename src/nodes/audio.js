@@ -40,7 +40,7 @@ export function registerAudioNodes(registry, hooks) {
         el.style.width = "180px";
         const wrapper = document.createElement("div");
         wrapper.className = "node-custom-ui";
-        wrapper.style.padding = "48px 10px 12px 10px";
+        wrapper.style.padding = "0 10px 12px 10px"; // 상단은 autoPortPadding이 처리
         wrapper.style.pointerEvents = "auto";
         wrapper.addEventListener("mousedown", (e) => e.stopPropagation());
 
@@ -148,7 +148,7 @@ export function registerAudioNodes(registry, hooks) {
         el.style.width = "180px";
         const wrapper = document.createElement("div");
         wrapper.className = "node-custom-ui";
-        wrapper.style.padding = "68px 10px 12px 10px";
+        wrapper.style.padding = "0 10px 12px 10px"; // 상단은 autoPortPadding이 처리
         wrapper.style.pointerEvents = "auto";
         wrapper.addEventListener("mousedown", (e) => e.stopPropagation());
 
@@ -239,7 +239,7 @@ export function registerAudioNodes(registry, hooks) {
         el.style.width = "200px";
         const wrapper = document.createElement("div");
         wrapper.className = "node-custom-ui";
-        wrapper.style.padding = "48px 10px 12px 10px";
+        wrapper.style.padding = "0 10px 12px 10px"; // 상단은 autoPortPadding이 처리 (채널 추가 시 자동 갱신)
         wrapper.style.pointerEvents = "auto";
         wrapper.style.display = "flex";
         wrapper.style.flexDirection = "column";

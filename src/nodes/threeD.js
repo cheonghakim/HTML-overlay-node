@@ -26,7 +26,7 @@ export function registerThreeDNodes(registry, hooks) {
         el.style.width = "180px";
         const wrapper = document.createElement("div");
         wrapper.className = "node-custom-ui";
-        wrapper.style.padding = "40px 10px 12px 10px";
+        wrapper.style.padding = "0 10px 12px 10px"; // 상단은 autoPortPadding이 처리
         wrapper.style.pointerEvents = "auto";
         wrapper.addEventListener("mousedown", (e) => e.stopPropagation());
 
@@ -175,7 +175,7 @@ export function registerThreeDNodes(registry, hooks) {
         el.style.width = "180px";
         const wrapper = document.createElement("div");
         wrapper.className = "node-custom-ui";
-        wrapper.style.padding = "108px 10px 12px 10px";
+        wrapper.style.padding = "0 10px 12px 10px"; // 상단은 autoPortPadding이 처리
         wrapper.style.pointerEvents = "auto";
         wrapper.style.display = "flex";
         wrapper.style.flexDirection = "column";

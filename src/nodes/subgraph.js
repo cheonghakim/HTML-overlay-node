@@ -140,6 +140,8 @@ export function registerSubGraphNodes(registry) {
     },
 
     html: {
+      // 버튼이 포트 행과 나란히 놓이는 컴팩트 레이아웃이므로 자동 패딩 제외
+      autoPortPadding: false,
       init(node, el, { body, graph }) {
         el.classList.add('node-overlay');
         Object.assign(body.style, {

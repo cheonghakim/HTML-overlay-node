@@ -90,6 +90,12 @@ export class HtmlOverlay {
         if (def.html.init) {
           def.html.init(node, el, { ...el._domParts, graph });
         }
+        // 포트 영역 회피 패딩 (기본 활성, html.autoPortPadding: false 로 옵트아웃)
+        // init 이후에 적용해 init이 body 스타일을 통째로 덮어써도 유지되게 한다
+        if (def.html.autoPortPadding !== false) {
+          el._autoPortPadding = true;
+          this._applyPortPadding(node, el);
+        }
       } else {
         return null; // HTML 없음
       }
@@ -108,6 +114,36 @@ export class HtmlOverlay {
       this._attachResizeObserver(node, el);
     }
     return el;
+  }
+
+  /**
+   * 포트 행 영역의 끝 y 좌표 (노드 상단 기준, horizontal slot layout 기준).
+   * 오버레이 위젯이 캔버스에 그려지는 포트/라벨을 피해 시작해야 할 위치.
+   * hitTest.js의 포트 배치 상수(header 22 + padding 8 + 20/port)와 동기화되어야 한다.
+   */
+  static portAreaBottom(node) {
+    const headerHeight = 22;
+    const padding = 8;
+    const portSpacing = 20;
+    const maxPorts = Math.max(node.inputs?.length || 0, node.outputs?.length || 0);
+    return headerHeight + padding + maxPorts * portSpacing;
+  }
+
+  /**
+   * 기본 레이아웃 body에 포트 영역만큼 padding-top을 적용한다.
+   * 포트 수가 변하지 않았으면 아무것도 하지 않는다.
+   * @returns {boolean} 패딩이 갱신되었으면 true
+   */
+  _applyPortPadding(node, el) {
+    const body = el._domParts?.body;
+    if (!body) return false;
+    const maxPorts = Math.max(node.inputs.length, node.outputs.length);
+    if (el._portPadCount === maxPorts) return false;
+    el._portPadCount = maxPorts;
+    const headerH = 22;
+    body.style.boxSizing = "border-box";
+    body.style.paddingTop = `${HtmlOverlay.portAreaBottom(node) - headerH}px`;
+    return true;
   }
 
   /**
@@ -202,6 +238,11 @@ export class HtmlOverlay {
         el.style.display = "none";
         seen.add(node.id);
         continue;
+      }
+
+      // 포트 수가 바뀌면 (동적 슬롯 추가, Toggle Input Ports 등) 패딩 재계산
+      if (el._autoPortPadding && this._applyPortPadding(node, el)) {
+        this._syncSizeToContent(node, el);
       }
 
       // 뷰포트 안: 표시 복원 + 위치 동기화

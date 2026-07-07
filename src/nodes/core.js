@@ -99,7 +99,6 @@ export function registerCoreNodes(registry, hooks) {
 
         body.style.display = "flex";
         body.style.flexDirection = "column";
-        body.style.marginTop = "28px";
 
         const label = document.createElement("label");
         label.className = "premium-label";

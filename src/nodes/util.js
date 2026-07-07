@@ -24,7 +24,6 @@ export function registerUtilNodes(registry) {
         button.style.width = "100%";
         button.style.textTransform = "uppercase";
         button.style.letterSpacing = "1px";
-        button.style.marginTop = "22px"; // Push below exec port label (port bottom ~y=50)
 
         button.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -224,7 +223,6 @@ export function registerUtilNodes(registry) {
         body.style.display = "flex";
         body.style.alignItems = "center";
         body.style.justifyContent = "center";
-        body.style.paddingTop = "44px"; // Push display below both port rows (y=44, y=64)
 
         const container = document.createElement("div");
         container.className = "watch-display";

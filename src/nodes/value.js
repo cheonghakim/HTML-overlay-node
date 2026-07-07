@@ -24,7 +24,7 @@ export function registerValueNodes(registry) {
     },
     html: {
       init(node, el, { body, graph }) {
-        body.style.cssText = "display:flex;align-items:flex-start;justify-content:center;padding-top:26px;pointer-events:auto;";
+        body.style.cssText = "display:flex;align-items:flex-start;justify-content:center;pointer-events:auto;"; // padding-top은 autoPortPadding이 처리
 
         const input = document.createElement("input");
         input.className = "premium-input";
