@@ -4,6 +4,18 @@
  */
 
 export function registerCoreNodes(registry, hooks) {
+  // Reroute Node
+  registry.register("core/Reroute", {
+    title: "",
+    color: "#22c55e",
+    size: { w: 16, h: 16 },
+    inputs: [{ name: "in", portType: "data", datatype: "any" }],
+    outputs: [{ name: "out", portType: "data", datatype: "any" }],
+    onExecute(node, { getInput, setOutput }) {
+      setOutput("out", getInput("in"));
+    }
+  });
+
   // Note Node
   registry.register("core/Note", {
     title: "Note",

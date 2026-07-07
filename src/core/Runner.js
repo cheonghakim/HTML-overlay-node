@@ -25,25 +25,30 @@ export class Runner {
     const nCycles = Math.max(1, cycles | 0);
     for (let c = 0; c < nCycles; c++) {
       for (const node of this.graph.nodes.values()) {
+        if (node.mute) continue;
         const def = this.registry.types.get(node.type);
-        if (def?.onExecute) {
+        if (def?.onExecute || node.bypass) {
           try {
-            def.onExecute(node, {
-              dt,
-              graph: this.graph,
-              getInput: (portName) => {
-                const p =
-                  node.inputs.find((i) => i.name === portName) ||
-                  node.inputs[0];
-                return p ? this.graph.getInput(node.id, p.id) : undefined;
-              },
-              setOutput: (portName, value) => {
-                const p =
-                  node.outputs.find((o) => o.name === portName) ||
-                  node.outputs[0];
-                if (p) this.graph.setOutput(node.id, p.id, value);
-              },
-            });
+            if (node.bypass) {
+              this._bypassExecuteDirect(node);
+            } else {
+              def.onExecute(node, {
+                dt,
+                graph: this.graph,
+                getInput: (portName) => {
+                  const p =
+                    node.inputs.find((i) => i.name === portName) ||
+                    node.inputs[0];
+                  return p ? this.graph.getInput(node.id, p.id) : undefined;
+                },
+                setOutput: (portName, value) => {
+                  const p =
+                    node.outputs.find((o) => o.name === portName) ||
+                    node.outputs[0];
+                  if (p) this.graph.setOutput(node.id, p.id, value);
+                },
+              });
+            }
           } catch (err) {
             this.hooks?.emit?.("error", err);
           }
@@ -77,11 +82,11 @@ export class Runner {
       if (visited.has(currentNodeId)) continue;
       visited.add(currentNodeId);
 
+      const node = this.graph.nodes.get(currentNodeId);
+      if (!node || node.mute) continue;
+
       // Record the exec edge that led to this node
       if (fromEdgeId) execEdgeOrder.push(fromEdgeId);
-
-      const node = this.graph.nodes.get(currentNodeId);
-      if (!node) continue;
 
       executedNodes.push(currentNodeId);
       allConnectedNodes.add(currentNodeId);
@@ -262,7 +267,13 @@ export class Runner {
   /** Execute a node using a shared run-local output cache for reliable data passing. */
   _executeNodeWithCache(nodeId, dt, runCache) {
     const node = this.graph.nodes.get(nodeId);
-    if (!node) return;
+    if (!node || node.mute) return;
+
+    if (node.bypass) {
+      this._bypassExecuteWithCache(node, runCache);
+      return;
+    }
+
     const def = this.registry.types.get(node.type);
     if (!def?.onExecute) return;
 
@@ -304,6 +315,69 @@ export class Runner {
     }
   }
 
+  _bypassExecuteWithCache(node, runCache) {
+    // 1. Pass through exec ports
+    const execInputs = node.inputs.filter(p => p.portType === "exec");
+    const execOutputs = node.outputs.filter(p => p.portType === "exec");
+    if (execInputs.length > 0 && execOutputs.length > 0) {
+      execOutputs.forEach((outPort, idx) => {
+        runCache.set(`${node.id}:${outPort.id}`, true);
+      });
+    }
+
+    // 2. Pass through data ports
+    node.outputs.filter(p => p.portType === "data").forEach((outPort, idx) => {
+      let inPort = node.inputs.find(p => p.portType === "data" && p.name === outPort.name);
+      if (!inPort) {
+        const dataInputs = node.inputs.filter(p => p.portType === "data");
+        inPort = dataInputs[idx] || dataInputs[0];
+      }
+
+      if (inPort) {
+        let val = undefined;
+        for (const edge of this.graph.edges.values()) {
+          if (edge.toNode === node.id && edge.toPort === inPort.id) {
+            const key = `${edge.fromNode}:${edge.fromPort}`;
+            val = runCache.has(key) ? runCache.get(key) : this.graph._curBuf().get(key);
+            break;
+          }
+        }
+        if (val !== undefined) {
+          runCache.set(`${node.id}:${outPort.id}`, val);
+        }
+      }
+    });
+  }
+
+  _bypassExecuteDirect(node) {
+    // 1. Pass through exec ports
+    const execInputs = node.inputs.filter(p => p.portType === "exec");
+    const execOutputs = node.outputs.filter(p => p.portType === "exec");
+    if (execInputs.length > 0 && execOutputs.length > 0) {
+      execOutputs.forEach((outPort) => {
+        const key = `${node.id}:${outPort.id}`;
+        this.graph._curBuf().set(key, true);
+      });
+    }
+
+    // 2. Pass through data ports
+    node.outputs.filter(p => p.portType === "data").forEach((outPort, idx) => {
+      let inPort = node.inputs.find(p => p.portType === "data" && p.name === outPort.name);
+      if (!inPort) {
+        const dataInputs = node.inputs.filter(p => p.portType === "data");
+        inPort = dataInputs[idx] || dataInputs[0];
+      }
+
+      if (inPort) {
+        const val = this.graph.getInput(node.id, inPort.id);
+        if (val !== undefined) {
+          const key = `${node.id}:${outPort.id}`;
+          this.graph._curBuf().set(key, val);
+        }
+      }
+    });
+  }
+
   findAllNextExecNodes(nodeId) {
     const node = this.graph.nodes.get(nodeId);
     if (!node) return [];
@@ -324,7 +398,12 @@ export class Runner {
 
   executeNode(nodeId, dt) {
     const node = this.graph.nodes.get(nodeId);
-    if (!node) return;
+    if (!node || node.mute) return;
+
+    if (node.bypass) {
+      this._bypassExecuteDirect(node);
+      return;
+    }
 
     const def = this.registry.types.get(node.type);
     if (!def?.onExecute) return;

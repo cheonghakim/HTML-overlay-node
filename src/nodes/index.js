@@ -22,6 +22,8 @@ import { registerValueNodes } from "./value.js";
 import { registerUtilNodes } from "./util.js";
 import { registerCoreNodes } from "./core.js";
 import { registerSubGraphNodes } from "./subgraph.js";
+import { registerAudioNodes } from "./audio.js";
+import { registerThreeDNodes } from "./threeD.js";
 
 export { registerMathNodes } from "./math.js";
 export { registerLogicNodes } from "./logic.js";
@@ -29,6 +31,8 @@ export { registerValueNodes } from "./value.js";
 export { registerUtilNodes } from "./util.js";
 export { registerCoreNodes } from "./core.js";
 export { registerSubGraphNodes } from "./subgraph.js";
+export { registerAudioNodes } from "./audio.js";
+export { registerThreeDNodes } from "./threeD.js";
 
 /**
  * Register all example nodes at once
@@ -42,4 +46,6 @@ export function registerAllNodes(registry, hooks) {
     registerUtilNodes(registry);
     registerCoreNodes(registry, hooks);
     registerSubGraphNodes(registry);
+    registerAudioNodes(registry, hooks);
+    registerThreeDNodes(registry, hooks);
 }

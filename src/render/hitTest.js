@@ -27,9 +27,17 @@ export function portRect(node, port, idx, dir, layoutMode = "horizontal") {
     h: node.size.height,
   };
 
-  // Ports centered on node edges (half inside, half outside)
   const portWidth = 12;
   const portHeight = 12;
+
+  if (node.type === "core/Reroute") {
+    if (dir === "in") {
+      return { x: nx - portWidth / 2, y: ny + height / 2 - portHeight / 2, w: portWidth, h: portHeight };
+    }
+    if (dir === "out") {
+      return { x: nx + width - portWidth / 2, y: ny + height / 2 - portHeight / 2, w: portWidth, h: portHeight };
+    }
+  }
 
   if (layoutMode === "vertical") {
     if (dir === "in") {

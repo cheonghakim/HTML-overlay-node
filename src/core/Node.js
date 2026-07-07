@@ -39,15 +39,10 @@ export class Node {
     this.locked = false;          // Prevent move/resize/delete
     this.description = "";        // Tooltip / documentation
     this._execError = null;       // { message, timestamp } when last execution failed
+    this.bypass = false;          // Bypass execution (pass-through)
+    this.mute = false;            // Disable execution (stop propagation)
   }
 
-  /**
-   * Add an input port to this node
-   * @param {string} name - Port name
-   * @param {string} [datatype="any"] - Data type for the port
-   * @param {string} [portType="data"] - Port type: "exec" or "data"
-   * @returns {Object} The created port
-   */
   /**
    * Recalculate minimum size based on ports
    */
@@ -67,8 +62,10 @@ export class Node {
     }
   }
 
+  /**
+   * Add an input port to this node
+   */
   addInput(name, datatype = "any", portType = "data") {
-    // ... existing validation ...
     if (typeof name !== "string" || (portType === "data" && !name)) {
       throw new Error("Input port name must be a non-empty string for data ports");
     }
@@ -78,8 +75,23 @@ export class Node {
     return port;
   }
 
+  /**
+   * Remove an input port from this node
+   */
+  removeInput(portId) {
+    const idx = this.inputs.findIndex(p => p.id === portId);
+    if (idx >= 0) {
+      this.inputs.splice(idx, 1);
+      this._updateMinSize();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Add an output port to this node
+   */
   addOutput(name, datatype = "any", portType = "data") {
-    // ... existing validation ...
     if (typeof name !== "string" || (portType === "data" && !name)) {
       throw new Error("Output port name must be a non-empty string for data ports");
     }
@@ -87,5 +99,18 @@ export class Node {
     this.outputs.push(port);
     this._updateMinSize();
     return port;
+  }
+
+  /**
+   * Remove an output port from this node
+   */
+  removeOutput(portId) {
+    const idx = this.outputs.findIndex(p => p.id === portId);
+    if (idx >= 0) {
+      this.outputs.splice(idx, 1);
+      this._updateMinSize();
+      return true;
+    }
+    return false;
   }
 }

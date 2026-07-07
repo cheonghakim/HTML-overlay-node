@@ -625,6 +625,35 @@ export class CanvasRenderer {
     const typeDef = this.registry?.types?.get(node.type);
     const categoryColor = node.color || typeDef?.color || theme.accent;
 
+    if (node.type === "core/Reroute") {
+      ctx.save();
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      if (selected) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(102, 204, 255, 0.5)";
+        ctx.lineWidth = 3 / this.scale;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = selected ? "#6cf" : "#34d399";
+      ctx.strokeStyle = "#111";
+      ctx.lineWidth = 1.5;
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    ctx.save();
+    if (node.mute) {
+      ctx.globalAlpha = 0.45;
+    } else if (node.bypass) {
+      ctx.globalAlpha = 0.75;
+    }
+
     // Selection highlight — category-colored glow outline
     if (selected) {
       ctx.save();
@@ -777,7 +806,14 @@ export class CanvasRenderer {
     const rightReserved = rightOff;
 
     // Title — use titleCy (icon cy + 0.5px offset) for optical alignment
-    this._drawScreenText(node.title, titleX, titleCy, {
+    let displayTitle = node.title;
+    if (node.mute) {
+      displayTitle += " [Muted]";
+    } else if (node.bypass) {
+      displayTitle += " [Bypassed]";
+    }
+
+    this._drawScreenText(displayTitle, titleX, titleCy, {
       fontPx: CanvasRenderer.FONT_SIZE,
       color: theme.text,
       baseline: "middle",
@@ -785,7 +821,10 @@ export class CanvasRenderer {
       maxWidth: x + w - titleX - rightReserved,
     });
 
-    if (skipPorts) return;
+    if (skipPorts) {
+      ctx.restore();
+      return;
+    }
 
     // Input ports + labels
     node.inputs.forEach((p, i) => {
@@ -820,6 +859,8 @@ export class CanvasRenderer {
         });
       }
     });
+
+    ctx.restore();
   }
 
   // Internal helper for rounded rectangles if not using the browser's native one

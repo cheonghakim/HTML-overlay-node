@@ -341,19 +341,50 @@ export class ContextMenu {
         alignItems: "center",
       });
 
-      subItemEl.addEventListener("mouseenter", () => {
-        subItemEl.style.backgroundColor = "rgba(255,255,255,0.07)";
-      });
+      if (subItem.submenu) {
+        const arrow = document.createElement("span");
+        arrow.textContent = "▶";
+        arrow.style.marginLeft = "12px";
+        arrow.style.fontSize = "10px";
+        arrow.style.opacity = "0.7";
+        contentWrapper.appendChild(arrow);
 
-      subItemEl.addEventListener("mouseleave", () => {
-        subItemEl.style.backgroundColor = "rgba(0,0,0,0)";
-      });
+        subItemEl.addEventListener("mouseenter", () => {
+          subItemEl.style.backgroundColor = "rgba(255,255,255,0.07)";
+          if (subItemEl._hideTimeout) {
+            clearTimeout(subItemEl._hideTimeout);
+            subItemEl._hideTimeout = null;
+          }
+          const subItems = typeof subItem.submenu === "function" ? subItem.submenu() : subItem.submenu;
+          this._showSubmenu(subItems, subItemEl);
+        });
 
-      subItemEl.addEventListener("click", (e) => {
-        e.stopPropagation();
-        subItem.action(this.target);
-        this.hide();
-      });
+        subItemEl.addEventListener("mouseleave", (e) => {
+          subItemEl.style.backgroundColor = "rgba(0,0,0,0)";
+          const subSubMenu = subItemEl._submenuElement;
+          if (subSubMenu) {
+            subItemEl._hideTimeout = setTimeout(() => {
+              if (!subSubMenu.contains(document.elementFromPoint(e.clientX, e.clientY))) {
+                this._hideSubmenu(subItemEl);
+              }
+            }, 150);
+          }
+        });
+      } else {
+        subItemEl.addEventListener("mouseenter", () => {
+          subItemEl.style.backgroundColor = "rgba(255,255,255,0.07)";
+        });
+
+        subItemEl.addEventListener("mouseleave", () => {
+          subItemEl.style.backgroundColor = "rgba(0,0,0,0)";
+        });
+
+        subItemEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          subItem.action(this.target);
+          this.hide();
+        });
+      }
 
       submenuEl.appendChild(subItemEl);
     });

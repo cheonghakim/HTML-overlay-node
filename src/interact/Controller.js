@@ -300,6 +300,20 @@ export class Controller {
 
     if (this.readOnly) return;
 
+    // Bypass selected nodes: Ctrl/Cmd + B
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+      e.preventDefault();
+      this.toggleBypassSelection();
+      return;
+    }
+
+    // Mute selected nodes: Ctrl/Cmd + M
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "m") {
+      e.preventDefault();
+      this.toggleMuteSelection();
+      return;
+    }
+
     // Group selected nodes: Ctrl/Cmd + G
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
       e.preventDefault();
@@ -666,8 +680,44 @@ export class Controller {
     if (node) {
       this.hooks?.emit("node:dblclick", node);
     } else {
-      if (!this.readOnly && this.searchPalette) {
-        this.searchPalette.show(e.clientX, e.clientY, w);
+      const edge = this._findEdgeAtWorld(w.x, w.y);
+      if (edge && !this.readOnly) {
+        let rNode = null;
+        let edge1 = null;
+        let edge2 = null;
+        const oldEdge = edge;
+
+        const cmd = {
+          do: () => {
+            rNode = this.graph.addNode("core/Reroute", {
+              title: "",
+              x: w.x - 8,
+              y: w.y - 8,
+              width: 16,
+              height: 16
+            });
+            this.graph.edges.delete(oldEdge.id);
+            
+            const inPort = rNode.inputs[0];
+            const outPort = rNode.outputs[0];
+            
+            edge1 = this.graph.addEdge(oldEdge.fromNode, oldEdge.fromPort, rNode.id, inPort.id);
+            edge2 = this.graph.addEdge(rNode.id, outPort.id, oldEdge.toNode, oldEdge.toPort);
+            this.render();
+          },
+          undo: () => {
+            if (edge1) this.graph.edges.delete(edge1.id);
+            if (edge2) this.graph.edges.delete(edge2.id);
+            if (rNode) this.graph.removeNode(rNode.id);
+            this.graph.edges.set(oldEdge.id, oldEdge);
+            this.render();
+          }
+        };
+        this.stack.exec(cmd);
+      } else {
+        if (!this.readOnly && this.searchPalette) {
+          this.searchPalette.show(e.clientX, e.clientY, w);
+        }
       }
     }
   }
@@ -1720,26 +1770,227 @@ export class Controller {
 
   _alignNodesHorizontal() {
     if (this.selection.size < 2) return;
-    const nodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
+    const nodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id)).filter(n => !!n && n.type !== "core/Group");
+    if (nodes.length < 2) return;
     const avgY = nodes.reduce((sum, n) => sum + n.computed.y, 0) / nodes.length;
-    for (const node of nodes) {
+    
+    const moves = nodes.map(node => {
       const parentY = node.parent ? node.parent.computed.y : 0;
-      node.pos.y = avgY - parentY;
+      const targetY = avgY - parentY;
+      return {
+        node,
+        fromPos: { x: node.pos.x, y: node.pos.y },
+        toPos: { x: node.pos.x, y: targetY }
+      };
+    });
+
+    for (const m of moves) {
+      m.node.pos.y = m.toPos.y;
     }
+
+    this.stack.exec(MoveNodesCmd(moves));
     this.graph.updateWorldTransforms();
     this.render();
   }
 
   _alignNodesVertical() {
     if (this.selection.size < 2) return;
-    const nodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id));
+    const nodes = Array.from(this.selection).map((id) => this.graph.getNodeById(id)).filter(n => !!n && n.type !== "core/Group");
+    if (nodes.length < 2) return;
     const avgX = nodes.reduce((sum, n) => sum + n.computed.x, 0) / nodes.length;
-    for (const node of nodes) {
+    
+    const moves = nodes.map(node => {
       const parentX = node.parent ? node.parent.computed.x : 0;
-      node.pos.x = avgX - parentX;
+      const targetX = avgX - parentX;
+      return {
+        node,
+        fromPos: { x: node.pos.x, y: node.pos.y },
+        toPos: { x: targetX, y: node.pos.y }
+      };
+    });
+
+    for (const m of moves) {
+      m.node.pos.x = m.toPos.x;
     }
+
+    this.stack.exec(MoveNodesCmd(moves));
     this.graph.updateWorldTransforms();
     this.render();
+  }
+
+  toggleBypassSelection() {
+    if (this.selection.size === 0) return;
+    const nodes = Array.from(this.selection).map(id => this.graph.getNodeById(id)).filter(n => !!n);
+    const prevBypasses = nodes.map(n => ({ node: n, bypass: n.bypass }));
+    
+    this.stack.exec({
+      do: () => {
+        for (const n of nodes) {
+          n.bypass = !n.bypass;
+          this.hooks.emit("node:updated", n);
+        }
+        this.render();
+      },
+      undo: () => {
+        for (const pb of prevBypasses) {
+          pb.node.bypass = pb.bypass;
+          this.hooks.emit("node:updated", pb.node);
+        }
+        this.render();
+      }
+    });
+  }
+
+  toggleMuteSelection() {
+    if (this.selection.size === 0) return;
+    const nodes = Array.from(this.selection).map(id => this.graph.getNodeById(id)).filter(n => !!n);
+    const prevMutes = nodes.map(n => ({ node: n, mute: n.mute }));
+    
+    this.stack.exec({
+      do: () => {
+        for (const n of nodes) {
+          n.mute = !n.mute;
+          this.hooks.emit("node:updated", n);
+        }
+        this.render();
+      },
+      undo: () => {
+        for (const pm of prevMutes) {
+          pm.node.mute = pm.mute;
+          this.hooks.emit("node:updated", pm.node);
+        }
+        this.render();
+      }
+    });
+  }
+
+  toggleWidgetToPort(nodeId, propertyKey) {
+    const node = this.graph.getNodeById(nodeId);
+    if (!node) return;
+
+    const inputPort = node.inputs.find(p => p.name === propertyKey && p.portType === "data");
+    
+    if (inputPort) {
+      const portId = inputPort.id;
+      const edgesToRemove = [];
+      for (const [eid, edge] of this.graph.edges) {
+        if (edge.toNode === nodeId && edge.toPort === portId) {
+          edgesToRemove.push(edge);
+        }
+      }
+
+      const prevInputs = [...node.inputs];
+
+      const cmd = {
+        do: () => {
+          for (const edge of edgesToRemove) {
+            this.graph.edges.delete(edge.id);
+          }
+          node.removeInput(portId);
+          this.hooks.emit("node:updated", node);
+          this.render();
+        },
+        undo: () => {
+          node.inputs = [...prevInputs];
+          node._updateMinSize();
+          for (const edge of edgesToRemove) {
+            this.graph.edges.set(edge.id, edge);
+          }
+          this.hooks.emit("node:updated", node);
+          this.render();
+        }
+      };
+      this.stack.exec(cmd);
+    } else {
+      let addedPort = null;
+      const cmd = {
+        do: () => {
+          addedPort = node.addInput(propertyKey, "any", "data");
+          this.hooks.emit("node:updated", node);
+          this.render();
+        },
+        undo: () => {
+          if (addedPort) {
+            node.removeInput(addedPort.id);
+          }
+          this.hooks.emit("node:updated", node);
+          this.render();
+        }
+      };
+      this.stack.exec(cmd);
+    }
+  }
+
+  _findEdgeAtWorld(wx, wy) {
+    const threshold = 8 / this.renderer.scale;
+    for (const [edgeId, edge] of this.graph.edges) {
+      const fromNode = this.graph.nodes.get(edge.fromNode);
+      const toNode = this.graph.nodes.get(edge.toNode);
+      if (!fromNode || !toNode) continue;
+
+      const iOut = fromNode.outputs.findIndex(p => p.id === edge.fromPort);
+      const iIn = toNode.inputs.findIndex(p => p.id === edge.toPort);
+      if (iOut < 0 || iIn < 0) continue;
+
+      const pOut = portRect(fromNode, null, iOut, "out", this.slotLayout);
+      const pIn = portRect(toNode, null, iIn, "in", this.slotLayout);
+
+      const ax = pOut.x + pOut.w / 2;
+      const ay = pOut.y + pOut.h / 2;
+      const bx = pIn.x + pIn.w / 2;
+      const by = pIn.y + pIn.h / 2;
+
+      let prevX = ax;
+      let prevY = ay;
+      let minDistance = Infinity;
+
+      for (let t = 0.1; t <= 1.05; t += 0.1) {
+        let currX, currY;
+        if (this.renderer.edgeStyle === "bezier") {
+          const dx = Math.max(40, Math.abs(bx - ax) * 0.5);
+          const cp1x = ax + dx;
+          const cp1y = ay;
+          const cp2x = bx - dx;
+          const cp2y = by;
+
+          const mt = 1 - t;
+          currX = mt * mt * mt * ax + 3 * mt * mt * t * cp1x + 3 * mt * t * t * cp2x + t * t * t * bx;
+          currY = mt * mt * mt * ay + 3 * mt * mt * t * cp1y + 3 * mt * t * t * cp2y + t * t * t * by;
+        } else if (this.renderer.edgeStyle === "orthogonal") {
+          const endpoints = { x1: ax, y1: ay, x2: bx, y2: by };
+          const { fromX, splitX, toX, topY, bottomY } = this.renderer._getOrthogonalRouteValues(endpoints, edge.route || {});
+          const segments = [
+            { x1: ax, y1: ay, x2: fromX, y2: ay },
+            { x1: fromX, y1: ay, x2: fromX, y2: topY },
+            { x1: fromX, y1: topY, x2: splitX, y2: topY },
+            { x1: splitX, y1: topY, x2: splitX, y2: bottomY },
+            { x1: splitX, y1: bottomY, x2: toX, y2: bottomY },
+            { x1: toX, y1: bottomY, x2: toX, y2: by },
+            { x1: toX, y1: by, x2: bx, y2: by }
+          ];
+          for (const seg of segments) {
+            const d = this._distanceToSegment(wx, wy, seg.x1, seg.y1, seg.x2, seg.y2);
+            if (d < minDistance) minDistance = d;
+          }
+          continue;
+        } else {
+          currX = ax + (bx - ax) * t;
+          currY = ay + (by - ay) * t;
+        }
+
+        if (this.renderer.edgeStyle !== "orthogonal") {
+          const d = this._distanceToSegment(wx, wy, prevX, prevY, currX, currY);
+          if (d < minDistance) minDistance = d;
+          prevX = currX;
+          prevY = currY;
+        }
+      }
+
+      if (minDistance <= threshold) {
+        return edge;
+      }
+    }
+    return null;
   }
 
   arrangeSelectionInGrid(cols = 3, spacingX = 220, spacingY = 120) {

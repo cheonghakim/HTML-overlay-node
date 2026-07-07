@@ -46,6 +46,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="./src/ui/PropertyPanel.css" />
+    <link rel="stylesheet" href="./src/ui/PreviewWindow.css" />
     <link rel="stylesheet" href="./index.css" />
     <link rel="icon" href="/img/favicon.svg" />
   </head>
@@ -63,6 +64,9 @@
               </div>
               <div class="mb-dd-item" id="loadBtn">
                 <span>Load</span>
+              </div>
+              <div class="mb-dd-item" id="exportPngBtn">
+                <span>Export PNG (with workflow)</span>
               </div>
             </div>
           </div>
@@ -86,6 +90,13 @@
               </div>
               <div class="mb-dd-item" id="duplicateBtn">
                 <span>Duplicate</span><span class="mb-shortcut">Ctrl+D</span>
+              </div>
+              <div class="mb-dd-sep"></div>
+              <div class="mb-dd-item" id="alignHBtn">
+                <span>Align Horizontal</span><span class="mb-shortcut">A</span>
+              </div>
+              <div class="mb-dd-item" id="alignVBtn">
+                <span>Align Vertical</span><span class="mb-shortcut">Shift+A</span>
               </div>
               <div class="mb-dd-sep"></div>
               <div class="mb-dd-item" id="selectAllBtn">
@@ -187,16 +198,20 @@
     <script type="module">
       import { createGraphEditor } from "./src/index.js";
       import { registerAllNodes } from "./src/nodes/index.js";
+      import { PreviewWindow } from "./src/ui/PreviewWindow.js";
 
       const editor = createGraphEditor("#graph-editor", {
         theme: "dark",
-        autorun: false,
+        autorun: true,
         showMinimap: true,
         enablePropertyPanel: true,
         enableHelp: true,
       });
 
       window.editor = editor;
+
+      // Initialize floating Preview Window
+      const previewWin = new PreviewWindow(document.getElementById("graph-editor"));
 
       registerAllNodes(editor.registry, editor.hooks);
 
@@ -304,6 +319,12 @@
       });
       document.getElementById("deleteSelBtn").addEventListener("click", () => {
         editor.controller?._deleteSelection();
+      });
+      document.getElementById("alignHBtn").addEventListener("click", () => {
+        editor.controller?._alignNodesHorizontal();
+      });
+      document.getElementById("alignVBtn").addEventListener("click", () => {
+        editor.controller?._alignNodesVertical();
       });
 
       // ── Save / Load ─────────────────────────────────────────────
@@ -495,6 +516,152 @@
           searchOverlay.classList.contains("open") ? closeSearch() : openSearch();
         }
       });
+
+      // ── PNG Metadata Workflow Sharing ───────────────────────────
+      document.getElementById("exportPngBtn").addEventListener("click", async () => {
+        const mainCanvas = editor.renderer.canvas;
+        mainCanvas.toBlob(async (blob) => {
+          if (!blob) return;
+          const savedJson = JSON.stringify(editor.graph.toJSON(), null, 2);
+          const embeddedBlob = await addPngMetadata(blob, "workflow", savedJson);
+          
+          const url = URL.createObjectURL(embeddedBlob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "workflow_screenshot.png";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, "image/png");
+      });
+
+      const graphEditorEl = document.getElementById("graph-editor");
+      graphEditorEl.addEventListener("dragover", (e) => e.preventDefault());
+      graphEditorEl.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
+        
+        if (file.type === "image/png" || file.name.endsWith(".png")) {
+          const buffer = await file.arrayBuffer();
+          const workflowJson = extractPngMetadata(buffer, "workflow");
+          if (workflowJson) {
+            try {
+              editor.subNodePanel?.close();
+              editor.graph.fromJSON(JSON.parse(workflowJson));
+              if (editor.htmlOverlay) editor.htmlOverlay.clear();
+              requestAnimationFrame(() => {
+                editor.controller?.fitToView({ padding: 80, maxScale: 1.5 });
+                editor.render();
+              });
+            } catch (err) {
+              console.error(err);
+              alert("Failed to restore workflow from PNG metadata.");
+            }
+          } else {
+            alert("No embedded workflow metadata found in this PNG.");
+          }
+        }
+      });
+
+      function addPngMetadata(blob, key, text) {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const buffer = reader.result;
+            const view = new DataView(buffer);
+            
+            if (view.getUint32(0) !== 0x89504E47) {
+              resolve(blob);
+              return;
+            }
+            
+            const keyBytes = new TextEncoder().encode(key);
+            const textBytes = new TextEncoder().encode(text);
+            const dataLen = keyBytes.length + 1 + textBytes.length;
+            
+            const chunk = new Uint8Array(4 + 4 + dataLen + 4);
+            const chunkView = new DataView(chunk.buffer);
+            
+            chunkView.setUint32(0, dataLen);
+            chunk[4] = 116; // t
+            chunk[5] = 69;  // E
+            chunk[6] = 88;  // X
+            chunk[7] = 116; // t
+            
+            chunk.set(keyBytes, 8);
+            chunk[8 + keyBytes.length] = 0;
+            chunk.set(textBytes, 8 + keyBytes.length + 1);
+            
+            const crc = crc32(chunk.subarray(4, 8 + dataLen));
+            chunkView.setUint32(8 + dataLen, crc);
+            
+            let pos = 8;
+            let ihdrEnd = 8;
+            while (pos < buffer.byteLength) {
+              const len = view.getUint32(pos);
+              const type = String.fromCharCode(view.getUint8(pos+4), view.getUint8(pos+5), view.getUint8(pos+6), view.getUint8(pos+7));
+              if (type === "IHDR") {
+                ihdrEnd = pos + 4 + 4 + len + 4;
+                break;
+              }
+              pos += 4 + 4 + len + 4;
+            }
+            
+            const newBlob = new Blob([
+              buffer.slice(0, ihdrEnd),
+              chunk,
+              buffer.slice(ihdrEnd)
+            ], { type: "image/png" });
+            
+            resolve(newBlob);
+          };
+          reader.readAsArrayBuffer(blob);
+        });
+      }
+
+      function extractPngMetadata(arrayBuffer, key) {
+        const view = new DataView(arrayBuffer);
+        if (view.getUint32(0) !== 0x89504E47) return null;
+        
+        let pos = 8;
+        while (pos < arrayBuffer.byteLength) {
+          const len = view.getUint32(pos);
+          const type = String.fromCharCode(view.getUint8(pos+4), view.getUint8(pos+5), view.getUint8(pos+6), view.getUint8(pos+7));
+          if (type === "tEXt") {
+            const data = new Uint8Array(arrayBuffer, pos + 8, len);
+            let nullIdx = -1;
+            for (let i = 0; i < len; i++) {
+              if (data[i] === 0) { nullIdx = i; break; }
+            }
+            if (nullIdx !== -1) {
+              const chunkKey = new TextDecoder().decode(data.subarray(0, nullIdx));
+              if (chunkKey === key) {
+                return new TextDecoder().decode(data.subarray(nullIdx + 1));
+              }
+            }
+          }
+          pos += 4 + 4 + len + 4;
+        }
+        return null;
+      }
+
+      const crcTable = [];
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let j = 0; j < 8; j++) {
+          c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        }
+        crcTable[i] = c;
+      }
+      function crc32(bytes) {
+        let crc = 0xFFFFFFFF;
+        for (let i = 0; i < bytes.length; i++) {
+          crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+        }
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+      }
 
       loadExample();
     </script>
