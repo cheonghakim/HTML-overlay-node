@@ -237,12 +237,12 @@ export class ContextMenu {
         // Show submenu if exists
         if (item.submenu) {
           // Support function-based submenus for dynamic content
-          const submenuItems = typeof item.submenu === "function" ? item.submenu() : item.submenu;
+          const submenuItems = typeof item.submenu === "function" ? item.submenu(this.target) : item.submenu;
           this._showSubmenu(submenuItems, itemEl);
         }
       });
 
-      itemEl.addEventListener("mouseleave", (e) => {
+      itemEl.addEventListener("mouseleave", () => {
         itemEl.style.backgroundColor = "rgba(0,0,0,0)";
 
         // Hide submenu with delay if moving to submenu
@@ -251,7 +251,7 @@ export class ContextMenu {
           if (submenuEl) {
             // Add delay before hiding to allow mouse to reach submenu
             itemEl._hideTimeout = setTimeout(() => {
-              if (!submenuEl.contains(document.elementFromPoint(e.clientX, e.clientY))) {
+              if (!itemEl.matches(":hover") && !this._isSubmenuTreeHovered(submenuEl)) {
                 this._hideSubmenu(itemEl);
               }
             }, 150); // 150ms delay
@@ -279,6 +279,9 @@ export class ContextMenu {
   _showSubmenu(submenuItems, parentItemEl) {
     // Remove any existing submenu
     this._hideSubmenu(parentItemEl);
+
+    // Nothing to show — don't render an empty box
+    if (!submenuItems || submenuItems.length === 0) return;
 
     const submenuEl = document.createElement("div");
     submenuEl.className = "context-submenu";
@@ -355,16 +358,16 @@ export class ContextMenu {
             clearTimeout(subItemEl._hideTimeout);
             subItemEl._hideTimeout = null;
           }
-          const subItems = typeof subItem.submenu === "function" ? subItem.submenu() : subItem.submenu;
+          const subItems = typeof subItem.submenu === "function" ? subItem.submenu(this.target) : subItem.submenu;
           this._showSubmenu(subItems, subItemEl);
         });
 
-        subItemEl.addEventListener("mouseleave", (e) => {
+        subItemEl.addEventListener("mouseleave", () => {
           subItemEl.style.backgroundColor = "rgba(0,0,0,0)";
           const subSubMenu = subItemEl._submenuElement;
           if (subSubMenu) {
             subItemEl._hideTimeout = setTimeout(() => {
-              if (!subSubMenu.contains(document.elementFromPoint(e.clientX, e.clientY))) {
+              if (!subItemEl.matches(":hover") && !this._isSubmenuTreeHovered(subSubMenu)) {
                 this._hideSubmenu(subItemEl);
               }
             }, 150);
@@ -399,13 +402,18 @@ export class ContextMenu {
     });
 
     submenuEl.addEventListener("mouseleave", (e) => {
-      if (!parentItemEl.contains(e.relatedTarget)) {
-        this._hideSubmenu(parentItemEl);
+      const related = e.relatedTarget;
+      // Stay open when moving back to the parent item or into a nested submenu
+      if (related instanceof Element) {
+        if (parentItemEl.contains(related)) return;
+        if (this._isInSubmenuTree(related, submenuEl)) return;
       }
+      this._hideSubmenu(parentItemEl);
     });
 
     document.body.appendChild(submenuEl);
     parentItemEl._submenuElement = submenuEl;
+    submenuEl._parentItem = parentItemEl;
 
     // Position submenu next to parent item
     requestAnimationFrame(() => {
@@ -430,13 +438,52 @@ export class ContextMenu {
   }
 
   /**
-   * Hide submenu for an item
+   * Hide submenu for an item, including any nested submenus
    * @private
    */
   _hideSubmenu(parentItemEl) {
-    if (parentItemEl._submenuElement) {
-      parentItemEl._submenuElement.remove();
-      parentItemEl._submenuElement = null;
+    const submenuEl = parentItemEl._submenuElement;
+    if (!submenuEl) return;
+
+    // Recursively close nested submenus first
+    for (const itemEl of submenuEl.children) {
+      if (itemEl._submenuElement) {
+        this._hideSubmenu(itemEl);
+      }
+      if (itemEl._hideTimeout) {
+        clearTimeout(itemEl._hideTimeout);
+        itemEl._hideTimeout = null;
+      }
     }
+
+    submenuEl.remove();
+    parentItemEl._submenuElement = null;
+  }
+
+  /**
+   * Check whether a submenu or any of its nested submenus is hovered
+   * @private
+   */
+  _isSubmenuTreeHovered(submenuEl) {
+    if (submenuEl.matches(":hover")) return true;
+    for (const itemEl of submenuEl.children) {
+      if (itemEl._submenuElement && this._isSubmenuTreeHovered(itemEl._submenuElement)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check whether an element lives inside the given submenu or one of its descendants
+   * @private
+   */
+  _isInSubmenuTree(el, rootSubmenuEl) {
+    let menu = el.closest(".context-submenu");
+    while (menu) {
+      if (menu === rootSubmenuEl) return true;
+      menu = menu._parentItem ? menu._parentItem.closest(".context-submenu") : null;
+    }
+    return false;
   }
 }
