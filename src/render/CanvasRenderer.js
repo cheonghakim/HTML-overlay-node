@@ -417,6 +417,8 @@ export class CanvasRenderer {
 
           ctx.restore();
         }
+
+        this._drawEdgeLabelForEdge(graph, e);
       }
     }
 
@@ -1028,6 +1030,30 @@ export class CanvasRenderer {
     };
   }
 
+  /**
+   * 엣지에 표시할 라벨 텍스트를 결정한다.
+   * 명시적 e.label이 최우선. 없으면 소스 노드의 아웃풋이 2개 이상일 때
+   * 어떤 슬롯에서 나온 경로인지 알 수 있도록 소스 포트명을 사용한다.
+   */
+  _getEdgeLabelText(graph, e) {
+    if (e.label) return e.label;
+    const from = graph.nodes.get(e.fromNode);
+    if (!from || from.outputs.length < 2) return null;
+    const port = from.outputs.find((p) => p.id === e.fromPort);
+    return port?.name || null;
+  }
+
+  /** 줌 아웃 시 텍스트가 읽히지 않으므로 이 배율 미만에서는 엣지 라벨 생략 */
+  static LOD_HIDE_EDGE_LABEL = 0.5;
+
+  _drawEdgeLabelForEdge(graph, e) {
+    if (this.scale < CanvasRenderer.LOD_HIDE_EDGE_LABEL) return;
+    const text = this._getEdgeLabelText(graph, e);
+    if (!text) return;
+    const mid = this._getEdgeDotPosition(graph, e, 0.5);
+    if (mid) this._drawEdgeLabel(mid.x, mid.y, text);
+  }
+
   _drawEdgeLabel(wx, wy, text) {
     const { ctx } = this;
     const fontSize = Math.max(9, 11 / this.scale);
@@ -1330,15 +1356,8 @@ export class CanvasRenderer {
         ctx.restore();
       }
 
-      // Edge label at geometric midpoint
-      if (e.label) {
-        const ep = this._getEdgeEndpoints(graph, e);
-        if (ep) {
-          const mx = (ep.x1 + ep.x2) / 2;
-          const my = (ep.y1 + ep.y2) / 2;
-          this._drawEdgeLabel(mx, my, e.label);
-        }
-      }
+      // Edge label at geometric midpoint (explicit label or multi-output slot name)
+      this._drawEdgeLabelForEdge(graph, e);
     }
 
     // Selection borders for HTML overlay nodes (drawn above the HTML layer)
