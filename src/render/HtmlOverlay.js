@@ -101,10 +101,40 @@ export class HtmlOverlay {
       this.container.appendChild(el);
       this.nodes.set(node.id, el);
 
+      // 노드 크기를 실제 HTML 콘텐츠 크기에 맞게 보정 (커질 때만)
+      this._syncSizeToContent(node, el);
+
       // ResizeObserver: sync node height when body content resizes
       this._attachResizeObserver(node, el);
     }
     return el;
+  }
+
+  /**
+   * 노드 크기를 HTML 콘텐츠에 맞게 보정한다 (커질 때만, 최초 1회).
+   * - init()이 지정한 인라인 width가 node.size.width보다 크면 채택
+   *   (draw()가 매 프레임 el 크기를 node.size로 덮어쓰므로 여기서 동기화해야 함)
+   * - 기본 레이아웃(body)의 콘텐츠 높이가 노드 높이를 넘으면 잘리지 않게 확장
+   */
+  _syncSizeToContent(node, el) {
+    const inlineW = parseFloat(el.style.width);
+    if (Number.isFinite(inlineW) && inlineW > node.size.width) {
+      node.size.width = inlineW;
+      node.computed.w = inlineW;
+    }
+
+    const body = el._domParts?.body;
+    if (!body) return;
+
+    // 최종 노드 폭 기준으로 콘텐츠 높이 측정
+    el.style.width = `${node.size.width}px`;
+    const headerH = 22;
+    const minH = headerH + body.scrollHeight;
+    if (minH > node.size.height) {
+      node.size.height = minH;
+      node.computed.h = minH;
+      this._onHeightChange?.();
+    }
   }
 
   _attachResizeObserver(node, el) {

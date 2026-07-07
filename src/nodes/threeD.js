@@ -5,6 +5,7 @@ export function registerThreeDNodes(registry, hooks) {
   registry.register("3d/Geometry", {
     title: "3D Shape",
     color: "#06b6d4", // cyan
+    size: { w: 180 },
     inputs: [
       { name: "exec", portType: "exec" }
     ],
@@ -146,6 +147,7 @@ export function registerThreeDNodes(registry, hooks) {
   registry.register("3d/Transform", {
     title: "3D Transform",
     color: "#06b6d4",
+    size: { w: 180 },
     inputs: [
       { name: "exec", portType: "exec" },
       { name: "geometry", portType: "data", datatype: "object" },

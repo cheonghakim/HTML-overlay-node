@@ -17,6 +17,7 @@ export function registerAudioNodes(registry, hooks) {
   registry.register("audio/Oscillator", {
     title: "Oscillator",
     color: "#a855f7", // purple
+    size: { w: 180 },
     inputs: [
       { name: "exec", portType: "exec" },
       { name: "frequency", portType: "data", datatype: "number" }
@@ -125,6 +126,7 @@ export function registerAudioNodes(registry, hooks) {
   registry.register("audio/Gain", {
     title: "Volume Gain",
     color: "#a855f7",
+    size: { w: 180 },
     inputs: [
       { name: "exec", portType: "exec" },
       { name: "signal", portType: "data", datatype: "object" },
@@ -217,6 +219,7 @@ export function registerAudioNodes(registry, hooks) {
   registry.register("audio/Mixer", {
     title: "Audio Mixer",
     color: "#a855f7",
+    size: { w: 200 },
     inputs: [
       { name: "exec", portType: "exec" }
     ],
